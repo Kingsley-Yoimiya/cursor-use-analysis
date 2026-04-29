@@ -87,12 +87,13 @@ function KPICard({ label, value, sub, valueColor = 'text-slate-800 dark:text-sla
 
 // ────────── KPI 卡片区域主组件 ──────────
 
-export function KPICards() {
+export function KPICards({ refreshKey }: { refreshKey?: number }) {
   const [data, setData] = useState<SummaryData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    setLoading(true)
     axios
       .get<SummaryResponse>('/api/summary')
       .then((r) => {
@@ -104,7 +105,7 @@ export function KPICards() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false))
-  }, [])
+  }, [refreshKey])
 
   if (loading) {
     return (

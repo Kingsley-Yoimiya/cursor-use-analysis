@@ -53,7 +53,7 @@ function calcCacheHitRate(t: ModelEntry['tokens']): number {
 
 // ────────── 主组件 ──────────
 
-export function ModelLeaderboard() {
+export function ModelLeaderboard({ refreshKey }: { refreshKey?: number }) {
   const [models, setModels] = useState<ModelEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -61,6 +61,7 @@ export function ModelLeaderboard() {
   const [sortAsc, setSortAsc] = useState(false)
 
   useEffect(() => {
+    setLoading(true)
     axios
       .get<SummaryResponse>('/api/summary')
       .then((r) => {
@@ -72,7 +73,7 @@ export function ModelLeaderboard() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false))
-  }, [])
+  }, [refreshKey])
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
