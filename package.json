@@ -7,11 +7,11 @@
   "scripts": {
     "setup": "playwright install chromium",
     "login": "node src/cli.mjs login",
-    "export": "node src/cli.mjs export",
+    "export": "node src/cli.mjs export --start 1767225600000 --out ./exports/usage.csv",
     "export-api": "node src/cli.mjs export-api",
     "chrome-cdp-cmd": "node src/cli.mjs chrome-cdp-cmd",
     "fetch-billing": "node scripts/fetch-billing-docs.mjs",
-    "estimate-cost": "node scripts/estimate-cost.mjs"
+    "estimate-cost": "node scripts/estimate-cost.mjs --in ./exports/usage.csv --out ./reports/estimate.json"
   },
   "engines": {
     "node": ">=18"

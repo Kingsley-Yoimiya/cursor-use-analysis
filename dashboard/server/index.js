@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const ESTIMATE_JSON = path.join(REPO_ROOT, 'reports', 'estimate.json');
-const USAGE_CSV = path.join(REPO_ROOT, 'exports', 'usage-2026-ytd.csv');
+const USAGE_CSV = path.join(REPO_ROOT, 'exports', 'usage.csv');
 const MODEL_RATES_PATH = path.join(REPO_ROOT, 'config', 'model-rates.json');
 
 const PORT = Number(process.env.PORT) || 3001;

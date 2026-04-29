@@ -28,7 +28,7 @@ dashboard/
 
 ## 如何使用
 
-确保你已经在根目录执行了导出数据脚本，并生成了 `exports/usage-2026-ytd.csv` 和 `reports/estimate.json`（或根据年份对应的文件，默认脚本会读取这些路径）。
+确保你已经在根目录执行了导出数据脚本，并生成了 `exports/usage.csv` 和 `reports/estimate.json`（或根据年份对应的文件，默认脚本会读取这些路径）。
 
 ### 一键启动
 
@@ -66,4 +66,4 @@ npm run dev
 ## 数据流说明
 
 1. **`/api/summary`**：直接读取根目录的 `reports/estimate.json`，提供宏观统计和模型排行榜的基础数据。
-2. **`/api/daily`**：流式读取根目录的 `exports/usage-2026-ytd.csv`，并结合 `config/model-rates.json` 的模型费率，实时计算每一行请求的真实等效 USD。按天和池子（Auto/Composer/API）进行聚合后返回给前端渲染图表。
+2. **`/api/daily`**：流式读取根目录的 `exports/usage.csv`，并结合 `config/model-rates.json` 的模型费率，实时计算每一行请求的真实等效 USD。按天和池子（Auto/Composer/API）进行聚合后返回给前端渲染图表。
