@@ -1,0 +1,211 @@
+{
+  "version": 1,
+  "currency": "USD",
+  "sources": [
+    "https://cursor.com/docs/account/pricing",
+    "https://cursor.com/terms/pricing"
+  ],
+  "notes": [
+    "费率为「每百万 token 美元」，与官方 Models & Pricing 表一致；官方调整时请同步本文件。",
+    "导出 CSV 中 Kind=Included 且 Cost=Included 时，本脚本仍可按 API 计价估算「等价美元」，便于可视化；实际账单以控制台为准。",
+    "长上下文 2x：当「输入侧 token 合计」超过阈值时，仅对输入侧三项（cache write / 非 cache input / cache read）的费用乘以倍数；输出费不乘。",
+    "Teams 的 Cursor Token Rate（$0.25/M）为额外费项，需 CLI 传 --teams 才叠加；模型名含 auto 时不叠加。",
+    "官方未单独列出的「变体名」（如 *-thinking、Premium）已映射到最近似的公开档位，仅作估算；Thinking 计 2 次请求等规则未建模。"
+  ],
+  "autoPool": {
+    "inputPerMillion": 1.25,
+    "cacheWritePerMillion": 1.25,
+    "cacheReadPerMillion": 0.25,
+    "outputPerMillion": 6
+  },
+  "teamsCursorTokenRatePerMillion": 0.25,
+  "models": {
+    "composer2": {
+      "displayName": "Composer 2",
+      "inputPerMillion": 0.5,
+      "cacheWritePerMillion": 0.5,
+      "cacheReadPerMillion": 0.2,
+      "outputPerMillion": 2.5,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
+    "composer1": {
+      "displayName": "Composer 1",
+      "inputPerMillion": 1.25,
+      "cacheWritePerMillion": 1.25,
+      "cacheReadPerMillion": 0.125,
+      "outputPerMillion": 10,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
+    "composer1.5": {
+      "displayName": "Composer 1.5",
+      "inputPerMillion": 3.5,
+      "cacheWritePerMillion": 3.5,
+      "cacheReadPerMillion": 0.35,
+      "outputPerMillion": 17.5,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
+    "claude-4.5-sonnet": {
+      "displayName": "Claude 4.5 Sonnet",
+      "inputPerMillion": 3,
+      "cacheWritePerMillion": 3.75,
+      "cacheReadPerMillion": 0.3,
+      "outputPerMillion": 15,
+      "longContextInputTokensThreshold": 200000,
+      "longContextMultiplier": 2
+    },
+    "claude-4.6-sonnet": {
+      "displayName": "Claude 4.6 Sonnet",
+      "inputPerMillion": 3,
+      "cacheWritePerMillion": 3.75,
+      "cacheReadPerMillion": 0.3,
+      "outputPerMillion": 15,
+      "longContextInputTokensThreshold": 200000,
+      "longContextMultiplier": 2
+    },
+    "claude-opus-4-5": {
+      "displayName": "Claude 4.5 Opus",
+      "inputPerMillion": 5,
+      "cacheWritePerMillion": 6.25,
+      "cacheReadPerMillion": 0.5,
+      "outputPerMillion": 25,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
+    "claude-opus-4-6": {
+      "displayName": "Claude 4.6 Opus",
+      "inputPerMillion": 5,
+      "cacheWritePerMillion": 6.25,
+      "cacheReadPerMillion": 0.5,
+      "outputPerMillion": 25,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
+    "claude-opus-4-7": {
+      "displayName": "Claude 4.7 Opus",
+      "inputPerMillion": 5,
+      "cacheWritePerMillion": 6.25,
+      "cacheReadPerMillion": 0.5,
+      "outputPerMillion": 25,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
+    "gpt-5.2": {
+      "displayName": "GPT-5.2",
+      "inputPerMillion": 1.75,
+      "cacheWritePerMillion": 1.75,
+      "cacheReadPerMillion": 0.175,
+      "outputPerMillion": 14,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
+    "gpt-5.3-codex": {
+      "displayName": "GPT-5.3 Codex",
+      "inputPerMillion": 1.75,
+      "cacheWritePerMillion": 1.75,
+      "cacheReadPerMillion": 0.175,
+      "outputPerMillion": 14,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
+    "gpt-5.4": {
+      "displayName": "GPT-5.4",
+      "inputPerMillion": 2.5,
+      "cacheWritePerMillion": 2.5,
+      "cacheReadPerMillion": 0.25,
+      "outputPerMillion": 15,
+      "longContextInputTokensThreshold": 200000,
+      "longContextMultiplier": 2
+    },
+    "gpt-5.4-fast": {
+      "displayName": "GPT-5.4 Fast（文档：约 2x 单价）",
+      "inputPerMillion": 5,
+      "cacheWritePerMillion": 5,
+      "cacheReadPerMillion": 0.5,
+      "outputPerMillion": 30,
+      "longContextInputTokensThreshold": 200000,
+      "longContextMultiplier": 2
+    },
+    "gpt-5.5": {
+      "displayName": "GPT-5.5",
+      "inputPerMillion": 5,
+      "cacheWritePerMillion": 5,
+      "cacheReadPerMillion": 0.5,
+      "outputPerMillion": 30,
+      "longContextInputTokensThreshold": 200000,
+      "longContextMultiplier": 2
+    },
+    "gemini-3-flash": {
+      "displayName": "Gemini 3 Flash",
+      "inputPerMillion": 0.5,
+      "cacheWritePerMillion": 0.5,
+      "cacheReadPerMillion": 0.05,
+      "outputPerMillion": 3,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
+    "gemini-3-pro": {
+      "displayName": "Gemini 3 Pro",
+      "inputPerMillion": 2,
+      "cacheWritePerMillion": 2,
+      "cacheReadPerMillion": 0.2,
+      "outputPerMillion": 12,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
+    "gemini-3.1-pro": {
+      "displayName": "Gemini 3.1 Pro",
+      "inputPerMillion": 2,
+      "cacheWritePerMillion": 2,
+      "cacheReadPerMillion": 0.2,
+      "outputPerMillion": 12,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
+    "grok-4.20": {
+      "displayName": "Grok 4.20",
+      "inputPerMillion": 2,
+      "cacheWritePerMillion": 2,
+      "cacheReadPerMillion": 0.2,
+      "outputPerMillion": 6,
+      "longContextInputTokensThreshold": 200000,
+      "longContextMultiplier": 2
+    }
+  },
+  "aliases": {
+    "auto": "auto",
+    "composer-2-fast": "composer2",
+    "composer-2": "composer2",
+    "composer2": "composer2",
+    "composer-1": "composer1",
+    "composer-1.5": "composer1.5",
+    "claude-4.5-sonnet": "claude-4.5-sonnet",
+    "claude-4.5-sonnet-thinking": "claude-4.5-sonnet",
+    "claude-4.6-sonnet-medium-thinking": "claude-4.6-sonnet",
+    "claude-4.5-opus-high-thinking": "claude-opus-4-5",
+    "claude-4.6-opus-high": "claude-opus-4-6",
+    "claude-4.6-opus-high-thinking": "claude-opus-4-6",
+    "claude-opus-4-7-thinking-high": "claude-opus-4-7",
+    "claude-opus-4-7-thinking-xhigh": "claude-opus-4-7",
+    "gpt-5.2": "gpt-5.2",
+    "new-gpt-5.2": "gpt-5.2",
+    "gpt-5.2-codex": "gpt-5.2",
+    "gpt-5.2-high": "gpt-5.2",
+    "gpt-5.3-codex": "gpt-5.3-codex",
+    "gpt-5.3-codex-high": "gpt-5.3-codex",
+    "premium (codex 5.3)": "gpt-5.3-codex",
+    "gpt-5.4-high": "gpt-5.4-fast",
+    "gpt-5.4-medium": "gpt-5.4",
+    "gpt-5.5": "gpt-5.5",
+    "gpt-5.5-medium": "gpt-5.5",
+    "gemini-3-flash-preview": "gemini-3-flash",
+    "gemini-3-pro-preview": "gemini-3-pro",
+    "gemini-3.1-pro": "gemini-3.1-pro",
+    "gemini-3.1-pro-preview": "gemini-3.1-pro",
+    "grok-4-20-thinking": "grok-4.20",
+    "grok-code-fast-1": "grok-4.20",
+    "agent_review": "composer2"
+  }
+}

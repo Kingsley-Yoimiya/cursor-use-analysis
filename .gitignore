@@ -16,4 +16,6 @@ auth.json
 .env.*
 !.env.example
 
-.DS_Store
+# 本地报告（可能较大或含汇总；需要可自建目录并取消忽略）
+reports/
+

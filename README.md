@@ -1,38 +1,40 @@
-# Cursor 用量数据采集
+# Cursor 用量分析与成本估算
 
-把 **cursor.com 控制台** 里的用量导出为 **CSV**（按 token 策略），便于后续做本地可视化与统计（按模型、按天、费用等）。  
-官方接口文档（API 类产品线）：[Cursor API 总览](https://cursor.com/docs/api)
+把 **cursor.com 控制台** 里的用量导出为 **CSV**（`strategy=tokens`），便于本地 **可视化、分摊成本、按模型统计**。本仓库同时抓取 **公开计费文档** 快照，并提供按 **分项 token（含 cache read/write）** 估算「等价 API 美元」的脚本。  
+官方 API 文档（企业 Admin）：[Cursor API 总览](https://cursor.com/docs/api) · 公开计费说明：[Models & Pricing](https://cursor.com/docs/account/pricing)
 
 ---
 
-## 数据采集方式（两条路径）
+## 数据采集方式
 
 | 方式 | 命令 | 鉴权 | 说明 |
 |------|------|------|------|
-| **A. 浏览器会话（本仓库默认）** | `npm run login` → `npm run export` | 将登录态写入 `data/auth.json` | 调用官网导出：`GET /api/dashboard/export-usage-events-csv?startDate=&endDate=&strategy=tokens`。与在网页里点导出等价；可能遇 Cloudflare，可用 CDP + Chrome（见下）。 |
-|B. 企业 Admin API | `npm run export-api` | 环境变量 `CURSOR_API_KEY`（`key_…`，`admin:*`） | 调用 `https://api.cursor.com`，`POST /teams/filtered-usage-events`，返回 JSON（可导出 CSV）。**需企业团队**，与 Dashboard 里 Integrations 的 **User API Key** 不是同一种密钥。 |
+| **A. 浏览器会话（主力）** | `npm run login` → `npm run export` | `data/auth.json`（Cookie / 会话） | 与网页点导出等价：`GET https://cursor.com/api/dashboard/export-usage-events-csv?startDate=&endDate=&strategy=tokens`。**时间戳为 UTC 毫秒。** 遇 Cloudflare 可用 `chrome-cdp-cmd` + `--from-cdp`。 |
+| **B. 企业 Admin API** | `npm run export-api` | `CURSOR_API_KEY`（`key_…`，`admin:*`） | `POST https://api.cursor.com/teams/filtered-usage-events`，JSON/CSV。**需企业团队**；Dashboard → Integrations 的 **User API Key** 不能替代。 |
 
-本仓库当前以 **方式 A** 为主；方式 B 适合已有 Admin 密钥的团队自动化。
-
-**导出 CSV 表头（方式 A）一般包含：** `Date`, `Cloud Agent ID`, `Automation ID`, `Kind`, `Model`, `Max Mode`, `Input (w/ Cache Write)`, `Input (w/o Cache Write)`, `Cache Read`, `Output Tokens`, `Total Tokens`, `Cost`（以实际响应为准）。
-
-**时间参数：** `startDate` / `endDate` 为 **UTC 毫秒时间戳**（与官网链接一致）。
+导出 CSV 常见列：`Date`, `Cloud Agent ID`, `Automation ID`, `Kind`, `Model`, `Max Mode`, `Input (w/ Cache Write)`, `Input (w/o Cache Write)`, `Cache Read`, `Output Tokens`, `Total Tokens`, `Cost`（`Cost` 可能为金额或 `Included` 等文案）。
 
 ---
 
-## 安全与隐私
+## 安全与隐私（务必阅读）
 
-- **`data/`**（含 `auth.json`、Playwright/Chrome 持久配置目录等）已在 `.gitignore` 中忽略，**切勿提交**。其中 Cookie / 会话等同账号权限。
-- **`.env*`**（如存放 `CURSOR_API_KEY`）已忽略。
-- **`*.csv`** 可能包含详细使用记录，默认 **全部忽略**，避免误传仓库。
-- 若将 CSV 复制到别处分析，请自行控制分享范围。
+以下路径 **已被 `.gitignore` 忽略，禁止提交到 Git**：
+
+| 路径/模式 | 内容 |
+|-----------|------|
+| `data/` | `auth.json`、Playwright/Chrome 持久目录（含 `cf_clearance`、登录 Cookie 等），**等同于账号权限**。 |
+| `*.csv` | 用量明细，可能暴露模型使用与工作量。 |
+| `reports/` | 成本汇总报告（默认忽略；如需版本管理可删 `.gitignore` 里对应行）。 |
+| `.env*` | 如存放 `CURSOR_API_KEY`。 |
+
+若需要将「图表」进仓库，请只提交 **脱敏聚合数据** 或 **生成逻辑**，不要提交原始 CSV / `auth.json`。
 
 ---
 
 ## 环境要求
 
 - Node.js **≥ 18**
-- 首次安装浏览器内核：`npm run setup`
+- 首次安装 Playwright Chromium：`npm run setup`
 
 ```bash
 npm install
@@ -41,31 +43,27 @@ npm run setup
 
 ---
 
-## 使用方式 A：登录并导出 CSV
+## 用法 A：登录并导出 CSV
 
-### 1）登录并保存会话
-
-任选其一：
+### 1）写入会话
 
 ```bash
-# 持久化目录 + stealth（推荐先试）
+# 任选其一
 npm run login -- --chrome
-
-# 或：先打印带 --user-data-dir 的 Chrome 命令，再远程调试连接
 npm run chrome-cdp-cmd
-# 按提示启动 Chrome 后：
+# 按输出的命令启动 Chrome 后：
 npm run login -- --from-cdp http://127.0.0.1:9222
 ```
 
-会话写入 **`data/auth.json`**。
+会话文件：**`data/auth.json`**。
 
-### 2）导出用量
+### 2）导出
 
 ```bash
-# 默认：本月 1 号 00:00 UTC → 当前时间，strategy=tokens
+# 默认：本月 1 号 00:00 UTC → 当前，`strategy=tokens`
 npm run export -- --out ./exports/my-usage.csv
 
-# 指定区间（示例：2026-01-01 UTC → 当前）
+# 示例：2026-01-01 UTC 起至今
 node src/cli.mjs export \
   --start 1767225600000 \
   --end "$(node -e 'process.stdout.write(String(Date.now()))')" \
@@ -73,41 +71,78 @@ node src/cli.mjs export \
   --strategy tokens
 ```
 
-若纯 HTTP 请求被拦截，可加 **`--headed`**（必要时再加 **`--chrome`**）用有头浏览器拉同一 URL。
+若直连下载返回 HTML，可加 **`--headed`**（必要时加 **`--chrome`**）。
 
 ---
 
-## 使用方式 B：Admin API
+## 用法 B：Admin API
 
 ```bash
 export CURSOR_API_KEY='key_你的Admin密钥'
 npm run export-api -- --out ./exports/usage-from-api.json
-# 或 --out ./exports/usage.csv 输出扁平 CSV
 ```
+
+---
+
+## 计费文档快照（便于离线对照）
+
+定期抓取官网公开页面到 **`docs/billing/`**（HTML 会包在 markdown 代码块内便于检索）：
+
+```bash
+npm run fetch-billing
+```
+
+来源索引见 **`docs/billing/INDEX.md`**。**实际计费以官网与合同为准**；政策变更后请重新 `fetch-billing` 并核对 **`config/model-rates.json`**。
+
+---
+
+## 成本估算：`estimate-cost`
+
+根据 **`config/model-rates.json`**（由你维护、需与 [Models & Pricing](https://cursor.com/docs/account/pricing) 对齐）对每条用量计算 **分项 token 费用**：
+
+- **Input (w/o Cache Write)** × `inputPerMillion`
+- **Input (w/ Cache Write)** × `cacheWritePerMillion`
+- **Cache Read** × `cacheReadPerMillion`（同类调用通常显著低于 full input）
+- **Output Tokens** × `outputPerMillion`
+- **长上下文**：若配置了 `longContextInputTokensThreshold`，当 **输入侧三类 token 之和** 超过阈值时，仅对 **输入侧费用** 乘以 `longContextMultiplier`（默认不乘 output，见配置文件 `notes`）。
+- **Teams**：`--teams` 时额外按 **总 token** 粗略叠加 Cursor Token Rate（`$0.25/M`）；模型名含 `auto` 的行 **不叠加**（与文档「Auto 豁免」对齐的近似）。
+
+```bash
+npm run estimate-cost -- --in ./exports/usage-2026-ytd.csv --out ./reports/estimate.json
+npm run estimate-cost -- --in ./exports/usage.csv --teams
+```
+
+产出 JSON 含 **`byModel` 汇总** 与 **`rows` 逐行明细**（`estimatedUsd`、`inputMult` 等）。  
+**说明**：`Kind`/`Cost` 为 `Included` 时，脚本仍可估算「若按 API 单价计费」的美元，**不等于**当月发票；**未建模**包月池抵扣、Premium 具体选型细节、旧版「按请求计费」等。
+
+CSV 中出现的 **`Model` 字符串** 通过 **`aliases`** 映射到公开档位；新模型导出后若报 `unknown_model`，请在 **`config/model-rates.json`** 增补。
 
 ---
 
 ## 脚本一览
 
-| 脚本 | 作用 |
+| 命令 | 作用 |
 |------|------|
 | `npm run setup` | 安装 Playwright Chromium |
-| `npm run login` | 浏览器登录并写入 `data/auth.json` |
-| `npm run chrome-cdp-cmd` | 打印远程调试 Chrome 启动命令 |
+| `npm run login` | 浏览器登录 → `data/auth.json` |
+| `npm run chrome-cdp-cmd` | 打印带 `--user-data-dir` 的远程调试启动行 |
 | `npm run export` | 用会话拉官网 CSV |
-| `npm run export-api` | 用 Admin Key 拉 API 数据 |
+| `npm run export-api` | Admin Key 拉 API |
+| `npm run fetch-billing` | 抓取计费文档到 `docs/billing/` |
+| `npm run estimate-cost` | 对 CSV 做分项计价估算 |
 
-完整参数：`node src/cli.mjs --help`
+完整 CLI：`node src/cli.mjs --help`
 
 ---
 
 ## 后续：可视化建议
 
-- 以 **方式 A** 的 CSV 为数据源时，可按 **`Date`** 聚合日用量，按 **`Model`** / **`Kind`** 拆分，对 **`Total Tokens`** 或 **`Cost`** 做趋势与占比（注意 `Cost` 列可能为 `"Included"` 等文本，解析时做分支）。
-- 建议将 **原始 CSV** 留在本机 `exports/`（已 git 忽略），版本库只保留 **脱敏/聚合后的数据** 或 **生成图表的脚本**，避免仓库泄露明细。
+- 以 CSV 或 `reports/estimate.json` 的 **`byModel` / 按日期聚合** 驱动图表（趋势、堆叠、Max Mode 对比）。
+- **Cache read** 占比高通常表示命中提示缓存，单价更低，适合在图例中与 input/output 区分。
+- 正式对外分享前做 **脱敏**（剔除 Cloud Agent ID 等如需）。
 
 ---
 
 ## 许可与声明
 
-本项目为个人本地工具，与 Cursor 官方无隶属关系。请遵守 Cursor 服务条款；勿将自动化用于绕过人机验证或滥用接口。
+本项目为个人本地工具，与 Cursor / Anysphere 无隶属关系。请遵守服务条款；勿将工具用于绕过人机验证或滥用接口。

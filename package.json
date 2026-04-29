@@ -9,7 +9,9 @@
     "login": "node src/cli.mjs login",
     "export": "node src/cli.mjs export",
     "export-api": "node src/cli.mjs export-api",
-    "chrome-cdp-cmd": "node src/cli.mjs chrome-cdp-cmd"
+    "chrome-cdp-cmd": "node src/cli.mjs chrome-cdp-cmd",
+    "fetch-billing": "node scripts/fetch-billing-docs.mjs",
+    "estimate-cost": "node scripts/estimate-cost.mjs"
   },
   "engines": {
     "node": ">=18"
