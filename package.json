@@ -1,0 +1,22 @@
+{
+  "name": "cursor-usage-analysis",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "拉取 Cursor 控制台用量 CSV（浏览器会话鉴权）",
+  "scripts": {
+    "setup": "playwright install chromium",
+    "login": "node src/cli.mjs login",
+    "export": "node src/cli.mjs export",
+    "export-api": "node src/cli.mjs export-api",
+    "chrome-cdp-cmd": "node src/cli.mjs chrome-cdp-cmd"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "playwright": "^1.52.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}

@@ -1,0 +1,19 @@
+# 依赖
+node_modules/
+
+# 敏感：Cursor 会话、本机 Chrome/Playwright 数据目录（含 Cookie、cf_clearance 等）
+data/
+
+# 从控制台导出的用量 CSV 可能含使用明细，勿提交
+*.csv
+
+# 若曾在别处放置会话文件
+auth.json
+**/auth.json
+
+# 本地环境变量（如 CURSOR_API_KEY）
+.env
+.env.*
+!.env.example
+
+.DS_Store
