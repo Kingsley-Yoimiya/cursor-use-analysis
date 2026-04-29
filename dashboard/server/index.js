@@ -4,6 +4,10 @@ import fs, { createReadStream } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import csv from 'csv-parser';
+import { exec } from 'child_process';
+import util from 'util';
+
+const execPromise = util.promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -275,6 +279,33 @@ app.get('/api/daily', async (_req, res) => {
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, repoRoot: REPO_ROOT });
+});
+
+app.post('/api/refresh', async (req, res) => {
+  const t0 = Date.now();
+  console.log('[api/refresh] 开始拉取最新数据...');
+  try {
+    // 运行拉取数据命令
+    await execPromise('npm run export', { cwd: REPO_ROOT });
+    // 运行生成报告命令
+    await execPromise('npm run estimate-cost', { cwd: REPO_ROOT });
+    
+    // 重新加载 ratesConfig (如果需要)
+    try {
+      const raw = fs.readFileSync(MODEL_RATES_PATH, 'utf8');
+      ratesConfig = JSON.parse(raw);
+    } catch (e) {
+      console.warn(`[api/refresh] 重新加载 model-rates.json 失败: ${e?.message}`);
+    }
+
+    const ms = Date.now() - t0;
+    console.log(`[api/refresh] 200 ok 刷新成功 ${ms}ms`);
+    res.json({ ok: true, ms });
+  } catch (e) {
+    const ms = Date.now() - t0;
+    console.error(`[api/refresh] 刷新失败: ${e?.message} ${ms}ms`);
+    res.status(500).json({ ok: false, error: e?.message || String(e), ms });
+  }
 });
 
 app.listen(PORT, () => {
