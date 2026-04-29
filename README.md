@@ -5,6 +5,38 @@
 
 ---
 
+## ⚡ 快速上手 (Quick Start)
+
+### 0. 环境安装
+```bash
+npm install
+npm run setup  # 安装 Playwright 依赖用于提取鉴权
+```
+
+### 1. 登录
+```bash
+npm run login
+```
+*(弹出浏览器后，完成 Cursor 官网登录，成功后状态将保存至本地)*
+
+### 2. 获取数据与计算
+```bash
+# 默认获取本月至今的数据
+npm run export
+
+# (可选) 计算等效金额报告
+npm run estimate-cost
+```
+
+### 3. 启动本地看板
+```bash
+chmod +x ./dashboard/start-dev.sh
+./dashboard/start-dev.sh
+```
+*(访问 [http://localhost:5173](http://localhost:5173) 即可打开炫酷的本地分析面板！)*
+
+---
+
 ## 数据采集方式
 
 | 方式 | 命令 | 鉴权 | 说明 |
