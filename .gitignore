@@ -19,3 +19,6 @@ auth.json
 # 本地报告（可能较大或含汇总；需要可自建目录并取消忽略）
 reports/
 
+# Dashboard 开发日志（含 PID、启动时间）
+dashboard/logs/
+

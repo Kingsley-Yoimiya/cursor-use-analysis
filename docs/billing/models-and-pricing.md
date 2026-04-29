@@ -1,5 +1,5 @@
 ---
-fetchedAt: 2026-04-29T05:44:30.064Z
+fetchedAt: 2026-04-29T05:46:22.137Z
 sourceUrl: https://cursor.com/docs/models-and-pricing
 title: Models & Pricing (docs)
 httpStatus: 200
