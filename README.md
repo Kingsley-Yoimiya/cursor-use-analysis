@@ -1,7 +1,7 @@
 # Cursor 用量分析与成本估算
 
 把 **cursor.com 控制台** 里的用量导出为 **CSV**（`strategy=tokens`），便于本地 **可视化、分摊成本、按模型统计**。本仓库同时抓取 **公开计费文档** 快照，并提供按 **分项 token（含 cache read/write）** 估算「等价 API 美元」的脚本。  
-官方 API 文档（企业 Admin）：[Cursor API 总览](https://cursor.com/docs/api) · 公开计费说明：[Models & Pricing](https://cursor.com/docs/account/pricing)
+官方 API 文档（企业 Admin）：[Cursor API 总览](https://cursor.com/docs/api) · 公开计费说明：[Models & Pricing](https://cursor.com/docs/models-and-pricing)
 
 ---
 

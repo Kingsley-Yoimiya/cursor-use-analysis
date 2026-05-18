@@ -3,7 +3,7 @@
  * 按 Cursor 公开计费规则估算每条用量行的「等价 API 美元」。
  *
  * 输入：官网导出的 usage CSV（token 分列 + Model + Max Mode）。
- * 费率：config/model-rates.json（需与官方 https://cursor.com/docs/account/pricing 对齐）。
+ * 费率：config/model-rates.json（需与官方 https://cursor.com/docs/models-and-pricing 对齐）。
  *
  * 限制：
  * - 不显式建模「Auto + Composer 池」与「API 池」的包月抵扣；Out-of-pool 仍以同表单价估算。

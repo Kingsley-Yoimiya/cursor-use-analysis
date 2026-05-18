@@ -13,7 +13,7 @@ const OUT_DIR = join(__dirname, '..', 'docs', 'billing');
 const TARGETS = [
   {
     file: 'models-and-pricing.md',
-    url: 'https://cursor.com/docs/account/pricing',
+    url: 'https://cursor.com/docs/models-and-pricing',
     title: 'Models & Pricing (docs)',
   },
   {
@@ -25,6 +25,11 @@ const TARGETS = [
     file: 'pricing-landing.md',
     url: 'https://cursor.com/pricing',
     title: 'Pricing landing',
+  },
+  {
+    file: 'model-cursor-composer-2.md',
+    url: 'https://cursor.com/docs/models/cursor-composer-2',
+    title: 'Model: Cursor Composer 2',
   },
 ];
 
