@@ -10,6 +10,7 @@ import { TokenDistChart } from './components/TokenDistChart'
 import { ModelUsageChart } from './components/ModelUsageChart'
 import { ModelDetailedChart } from './components/ModelDetailedChart'
 import { ModelLeaderboard } from './components/ModelLeaderboard'
+import { PeriodStatsView } from './components/PeriodStatsView'
 import { ThemeContext } from './context/ThemeContext'
 
 // ────────── 类型定义 ──────────
@@ -42,7 +43,7 @@ interface DailyResponse {
   error?: string
 }
 
-type Tab = 'overview' | 'model-details'
+type Tab = 'overview' | 'model-details' | 'period-stats'
 
 // ────────── 主应用组件 ──────────
 
@@ -114,6 +115,7 @@ function App() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: '概览 Overview' },
+    { id: 'period-stats', label: '周期统计 Period Stats' },
     { id: 'model-details', label: '模型详情 Model Details' },
   ]
 
@@ -292,6 +294,16 @@ function App() {
                   <ModelUsageChart daily={filteredDaily} />
                 </section>
               )}
+            </div>
+          )}
+
+          {/* ── 周期统计 Tab ── */}
+          {activeTab === 'period-stats' && (
+            <div className="space-y-6">
+              <h2 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                月度 / 账单周期统计
+              </h2>
+              <PeriodStatsView refreshKey={refreshKey} />
             </div>
           )}
 

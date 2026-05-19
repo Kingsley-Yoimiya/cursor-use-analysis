@@ -1,0 +1,9 @@
+{
+  "defaultBillingCycleDay": 23,
+  "billingCycleDayMin": 1,
+  "billingCycleDayMax": 28,
+  "notes": [
+    "账单周期起始日：每月该日 00:00 起至次月同日前一日的用量归入同一周期。",
+    "Dashboard 可在界面覆盖此默认值，偏好保存在浏览器 localStorage。"
+  ]
+}

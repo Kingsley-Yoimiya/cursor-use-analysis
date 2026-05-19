@@ -16,6 +16,11 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const ESTIMATE_JSON = path.join(REPO_ROOT, 'reports', 'estimate.json');
 const USAGE_CSV = path.join(REPO_ROOT, 'exports', 'usage.csv');
 const MODEL_RATES_PATH = path.join(REPO_ROOT, 'config', 'model-rates.json');
+const DASHBOARD_SETTINGS_PATH = path.join(
+  REPO_ROOT,
+  'config',
+  'dashboard-settings.json',
+);
 
 const PORT = Number(process.env.PORT) || 3001;
 const bootT0 = Date.now();
@@ -31,6 +36,17 @@ try {
   );
 } catch (e) {
   console.warn(`[boot] 警告：无法加载 model-rates.json: ${e?.message}`);
+}
+
+let dashboardSettings = { defaultBillingCycleDay: 23 };
+try {
+  const raw = fs.readFileSync(DASHBOARD_SETTINGS_PATH, 'utf8');
+  dashboardSettings = JSON.parse(raw);
+  console.log(
+    `[boot] 已加载 dashboard-settings.json，默认账单日: ${dashboardSettings.defaultBillingCycleDay}`,
+  );
+} catch (e) {
+  console.warn(`[boot] 警告：无法加载 dashboard-settings.json: ${e?.message}`);
 }
 
 // ──────────── 费率查找逻辑（参照 estimate-cost.mjs）────────────
@@ -88,6 +104,232 @@ function classifyPool(kind, resolvedKey) {
   if (kind === 'auto') return 'Auto';
   if (resolvedKey.includes('composer')) return 'Composer';
   return 'API';
+}
+
+function isFastModel(resolvedKey, modelRaw) {
+  const key = String(resolvedKey || '').toLowerCase();
+  if (key.includes('-fast')) return true;
+  const raw = String(modelRaw || '').toLowerCase();
+  return raw.includes('fast');
+}
+
+function createEmptyPeriodAgg(key, label, startDate, endDate) {
+  return {
+    key,
+    label,
+    startDate,
+    endDate,
+    totalTokens: 0,
+    totalCost: 0,
+    totalRows: 0,
+    fastTokens: 0,
+    fastRows: 0,
+    costByPool: { Auto: 0, Composer: 0, API: 0 },
+    tokensByPool: { Auto: 0, Composer: 0, API: 0 },
+    /** @type {Map<string, { model: string, requests: number, tokens: number, cost: number }>} */
+    byModel: new Map(),
+  };
+}
+
+function addRowToPeriodAgg(agg, row) {
+  agg.totalTokens += row.rowTokens;
+  agg.totalCost += row.estimatedUsd;
+  agg.totalRows += 1;
+  if (row.isFast) {
+    agg.fastTokens += row.rowTokens;
+    agg.fastRows += 1;
+  }
+  agg.costByPool[row.pool] += row.estimatedUsd;
+  agg.tokensByPool[row.pool] += row.rowTokens;
+
+  const modelKey = row.modelKey;
+  let modelAgg = agg.byModel.get(modelKey);
+  if (!modelAgg) {
+    modelAgg = {
+      model: modelKey,
+      requests: 0,
+      tokens: 0,
+      cost: 0,
+    };
+    agg.byModel.set(modelKey, modelAgg);
+  }
+  modelAgg.requests += 1;
+  modelAgg.tokens += row.rowTokens;
+  modelAgg.cost += row.estimatedUsd;
+}
+
+function calendarMonthKey(day) {
+  return day.slice(0, 7);
+}
+
+function calendarMonthLabel(key) {
+  const [y, m] = key.split('-');
+  return `${y}年${Number(m)}月`;
+}
+
+function calendarMonthRange(key) {
+  const [y, m] = key.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  return {
+    startDate: `${key}-01`,
+    endDate: `${key}-${String(lastDay).padStart(2, '0')}`,
+  };
+}
+
+function billingCycleKeyFromDay(day, cycleDay) {
+  const [y, m, d] = day.split('-').map(Number);
+  if (d >= cycleDay) {
+    return `${y}-${String(m).padStart(2, '0')}-${String(cycleDay).padStart(2, '0')}`;
+  }
+  let year = y;
+  let month = m - 1;
+  if (month < 1) {
+    month = 12;
+    year -= 1;
+  }
+  return `${year}-${String(month).padStart(2, '0')}-${String(cycleDay).padStart(2, '0')}`;
+}
+
+function billingCycleRange(cycleKey) {
+  const [y, m, d] = cycleKey.split('-').map(Number);
+  const startDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const end = new Date(y, m - 1, d);
+  end.setMonth(end.getMonth() + 1);
+  end.setDate(end.getDate() - 1);
+  const endDate = end.toISOString().slice(0, 10);
+  return { startDate, endDate };
+}
+
+function billingCycleLabel(cycleKey) {
+  const { startDate, endDate } = billingCycleRange(cycleKey);
+  return `${startDate} ~ ${endDate}`;
+}
+
+function pctChange(current, previous) {
+  if (previous === 0) return current === 0 ? 0 : null;
+  return (current - previous) / previous;
+}
+
+function finalizePeriodList(periodMap, kind, billingCycleDay) {
+  const sortedKeys = [...periodMap.keys()].sort();
+  const finalized = sortedKeys.map((key) => {
+    const agg = periodMap.get(key);
+    const range =
+      kind === 'calendar'
+        ? calendarMonthRange(key)
+        : billingCycleRange(key);
+    const label =
+      kind === 'calendar' ? calendarMonthLabel(key) : billingCycleLabel(key);
+
+    const models = [...agg.byModel.values()].sort((a, b) => b.cost - a.cost);
+    const totalModelRequests = models.reduce((s, m) => s + m.requests, 0);
+
+    return {
+      key,
+      label,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      totalTokens: agg.totalTokens,
+      totalCost: agg.totalCost,
+      totalRows: agg.totalRows,
+      fastTokens: agg.fastTokens,
+      fastRows: agg.fastRows,
+      fastRatio: agg.totalTokens > 0 ? agg.fastTokens / agg.totalTokens : 0,
+      fastRowRatio: agg.totalRows > 0 ? agg.fastRows / agg.totalRows : 0,
+      costByPool: agg.costByPool,
+      tokensByPool: agg.tokensByPool,
+      topModels: models.slice(0, 3),
+      modelFrequency: models
+        .slice()
+        .sort((a, b) => b.requests - a.requests)
+        .slice(0, 10)
+        .map((m) => ({
+          ...m,
+          requestShare:
+            totalModelRequests > 0 ? m.requests / totalModelRequests : 0,
+        })),
+    };
+  });
+
+  for (let i = 0; i < finalized.length; i++) {
+    const cur = finalized[i];
+    const prev = i > 0 ? finalized[i - 1] : null;
+    cur.changes = prev
+      ? {
+          costPct: pctChange(cur.totalCost, prev.totalCost),
+          tokensPct: pctChange(cur.totalTokens, prev.totalTokens),
+          rowsPct: pctChange(cur.totalRows, prev.totalRows),
+          fastRatioDelta: cur.fastRatio - prev.fastRatio,
+        }
+      : null;
+  }
+
+  return {
+    kind,
+    billingCycleDay: kind === 'billing' ? billingCycleDay : null,
+    periods: finalized,
+  };
+}
+
+const CSV_COL = {
+  date: 'Date',
+  model: 'Model',
+  inCacheWrite: 'Input (w/ Cache Write)',
+  inNoCache: 'Input (w/o Cache Write)',
+  cacheRead: 'Cache Read',
+  output: 'Output Tokens',
+  total: 'Total Tokens',
+};
+
+/**
+ * @param {Record<string,string>} row
+ */
+function processUsageRow(row) {
+  const day = dayKeyFromDateCell(row[CSV_COL.date]);
+  if (!day) return null;
+
+  const cacheRead = parseIntField(row[CSV_COL.cacheRead]);
+  const inputCacheWrite = parseIntField(row[CSV_COL.inCacheWrite]);
+  const inputNoCache = parseIntField(row[CSV_COL.inNoCache]);
+  const outputTokens = parseIntField(row[CSV_COL.output]);
+  const totalTokens =
+    parseIntField(row[CSV_COL.total]) ||
+    cacheRead + inputCacheWrite + inputNoCache + outputTokens;
+
+  const modelRaw = row[CSV_COL.model] ?? '';
+  const { kind, rate, resolvedKey } = resolveRateForModel(modelRaw);
+  let estimatedUsd = 0;
+  if (rate) {
+    estimatedUsd = estimateTokensUsd(
+      {
+        cacheWrite: inputCacheWrite,
+        noCache: inputNoCache,
+        cacheRead,
+        output: outputTokens,
+      },
+      rate,
+    );
+  }
+
+  const pool = classifyPool(kind, resolvedKey);
+  const rowTokens =
+    cacheRead + inputCacheWrite + inputNoCache + outputTokens;
+  const modelKey =
+    resolvedKey || String(modelRaw || 'unknown').trim() || 'unknown';
+
+  return {
+    day,
+    cacheRead,
+    inputCacheWrite,
+    inputNoCache,
+    outputTokens,
+    totalTokens,
+    estimatedUsd,
+    pool,
+    rowTokens,
+    modelKey,
+    isFast: isFastModel(resolvedKey, modelRaw),
+  };
 }
 
 // ──────────── 工具函数 ────────────
@@ -174,16 +416,6 @@ app.get('/api/daily', async (_req, res) => {
    */
   const byDay = new Map();
 
-  const col = {
-    date: 'Date',
-    model: 'Model',
-    inCacheWrite: 'Input (w/ Cache Write)',
-    inNoCache: 'Input (w/o Cache Write)',
-    cacheRead: 'Cache Read',
-    output: 'Output Tokens',
-    total: 'Total Tokens',
-  };
-
   try {
     await new Promise((resolve, reject) => {
       const stream = createReadStream(USAGE_CSV, { encoding: 'utf8' });
@@ -191,37 +423,21 @@ app.get('/api/daily', async (_req, res) => {
       stream
         .pipe(csv())
         .on('data', (row) => {
-          const day = dayKeyFromDateCell(row[col.date]);
-          if (!day) return;
+          const parsed = processUsageRow(row);
+          if (!parsed) return;
 
-          const cacheRead = parseIntField(row[col.cacheRead]);
-          const inputCacheWrite = parseIntField(row[col.inCacheWrite]);
-          const inputNoCache = parseIntField(row[col.inNoCache]);
-          const outputTokens = parseIntField(row[col.output]);
-          const totalTokens =
-            parseIntField(row[col.total]) ||
-            cacheRead + inputCacheWrite + inputNoCache + outputTokens;
-
-          // 计算真实等效 USD 成本
-          const modelRaw = row[col.model] ?? '';
-          const { kind, rate, resolvedKey } = resolveRateForModel(modelRaw);
-          let estimatedUsd = 0;
-          if (rate) {
-            estimatedUsd = estimateTokensUsd(
-              {
-                cacheWrite: inputCacheWrite,
-                noCache: inputNoCache,
-                cacheRead,
-                output: outputTokens,
-              },
-              rate,
-            );
-          }
-
-          const pool = classifyPool(kind, resolvedKey);
-          const rowTokens = cacheRead + inputCacheWrite + inputNoCache + outputTokens;
-
-          const modelKey = resolvedKey || String(modelRaw || 'unknown').trim() || 'unknown';
+          const {
+            day,
+            cacheRead,
+            inputCacheWrite,
+            inputNoCache,
+            outputTokens,
+            totalTokens,
+            estimatedUsd,
+            pool,
+            rowTokens,
+            modelKey,
+          } = parsed;
 
           let agg = byDay.get(day);
           if (!agg) {
@@ -250,7 +466,8 @@ app.get('/api/daily', async (_req, res) => {
           agg.costByPool[pool] += estimatedUsd;
           agg.tokensByPool[pool] += rowTokens;
           agg.costByModel[modelKey] = (agg.costByModel[modelKey] ?? 0) + estimatedUsd;
-          agg.tokensByModel[modelKey] = (agg.tokensByModel[modelKey] ?? 0) + rowTokens;
+          agg.tokensByModel[modelKey] =
+            (agg.tokensByModel[modelKey] ?? 0) + rowTokens;
           agg.rows += 1;
         })
         .on('end', resolve)
@@ -277,8 +494,107 @@ app.get('/api/daily', async (_req, res) => {
   return res.json({ ok: true, daily, ms });
 });
 
+app.get('/api/period-stats', async (req, res) => {
+  const t0 = Date.now();
+  if (!fs.existsSync(USAGE_CSV)) {
+    return res.status(404).json({
+      ok: false,
+      error: '找不到 usage CSV',
+      path: USAGE_CSV,
+    });
+  }
+
+  const minDay = dashboardSettings.billingCycleDayMin ?? 1;
+  const maxDay = dashboardSettings.billingCycleDayMax ?? 28;
+  let billingCycleDay = Number(req.query.billingCycleDay);
+  if (!Number.isFinite(billingCycleDay)) {
+    billingCycleDay = dashboardSettings.defaultBillingCycleDay ?? 23;
+  }
+  billingCycleDay = Math.min(maxDay, Math.max(minDay, Math.round(billingCycleDay)));
+
+  /** @type {Map<string, ReturnType<typeof createEmptyPeriodAgg>>} */
+  const calendarMap = new Map();
+  /** @type {Map<string, ReturnType<typeof createEmptyPeriodAgg>>} */
+  const billingMap = new Map();
+
+  try {
+    await new Promise((resolve, reject) => {
+      const stream = createReadStream(USAGE_CSV, { encoding: 'utf8' });
+      stream.on('error', reject);
+      stream
+        .pipe(csv())
+        .on('data', (row) => {
+          const parsed = processUsageRow(row);
+          if (!parsed) return;
+
+          const calKey = calendarMonthKey(parsed.day);
+          if (!calendarMap.has(calKey)) {
+            const range = calendarMonthRange(calKey);
+            calendarMap.set(
+              calKey,
+              createEmptyPeriodAgg(
+                calKey,
+                calendarMonthLabel(calKey),
+                range.startDate,
+                range.endDate,
+              ),
+            );
+          }
+          addRowToPeriodAgg(calendarMap.get(calKey), parsed);
+
+          const billKey = billingCycleKeyFromDay(parsed.day, billingCycleDay);
+          if (!billingMap.has(billKey)) {
+            const range = billingCycleRange(billKey);
+            billingMap.set(
+              billKey,
+              createEmptyPeriodAgg(
+                billKey,
+                billingCycleLabel(billKey),
+                range.startDate,
+                range.endDate,
+              ),
+            );
+          }
+          addRowToPeriodAgg(billingMap.get(billKey), parsed);
+        })
+        .on('end', resolve)
+        .on('error', reject);
+    });
+  } catch (e) {
+    const ms = Date.now() - t0;
+    console.error(`[api/period-stats] 流处理失败 ${e?.message} ${ms}ms`);
+    return res.status(500).json({
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+      path: USAGE_CSV,
+      ms,
+    });
+  }
+
+  const calendarMonths = finalizePeriodList(calendarMap, 'calendar', billingCycleDay);
+  const billingCycles = finalizePeriodList(billingMap, 'billing', billingCycleDay);
+  const ms = Date.now() - t0;
+  console.log(
+    `[api/period-stats] 200 ok calendar=${calendarMonths.periods.length} billing=${billingCycles.periods.length} day=${billingCycleDay} ${ms}ms`,
+  );
+
+  return res.json({
+    ok: true,
+    billingCycleDay,
+    defaultBillingCycleDay: dashboardSettings.defaultBillingCycleDay ?? 23,
+    billingCycleDayRange: { min: minDay, max: maxDay },
+    calendarMonths,
+    billingCycles,
+    ms,
+  });
+});
+
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, repoRoot: REPO_ROOT });
+  res.json({
+    ok: true,
+    repoRoot: REPO_ROOT,
+    features: ['summary', 'daily', 'period-stats', 'refresh'],
+  });
 });
 
 app.post('/api/refresh', async (req, res) => {
