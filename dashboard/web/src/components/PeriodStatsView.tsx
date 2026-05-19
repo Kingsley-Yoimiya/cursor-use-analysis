@@ -27,11 +27,25 @@ interface ModelStat {
   requestShare?: number
 }
 
+interface PoolValues {
+  Auto: number
+  Composer: number
+  API: number
+}
+
+interface PoolChangeStat {
+  costPct: number | null
+  tokensPct: number | null
+  costShareDelta: number
+  tokenShareDelta: number
+}
+
 interface PeriodChanges {
   costPct: number | null
   tokensPct: number | null
   rowsPct: number | null
   fastRatioDelta: number
+  poolChanges?: Record<keyof PoolValues, PoolChangeStat>
 }
 
 interface PeriodEntry {
@@ -46,8 +60,10 @@ interface PeriodEntry {
   fastRows: number
   fastRatio: number
   fastRowRatio: number
-  costByPool: { Auto: number; Composer: number; API: number }
-  tokensByPool: { Auto: number; Composer: number; API: number }
+  costByPool: PoolValues
+  tokensByPool: PoolValues
+  costShareByPool: PoolValues
+  tokenShareByPool: PoolValues
   topModels: ModelStat[]
   modelFrequency: ModelStat[]
   changes: PeriodChanges | null
@@ -71,6 +87,22 @@ interface PeriodStatsResponse {
 }
 
 type ViewMode = 'calendar' | 'billing'
+type PoolMetricMode = 'usd' | 'tokens' | 'share'
+
+const POOLS = ['Auto', 'Composer', 'API'] as const
+const POOL_COLORS: Record<(typeof POOLS)[number], string> = {
+  Auto: '#f59e0b',
+  Composer: '#8b5cf6',
+  API: '#06b6d4',
+}
+
+const PIE_OTHER_COLOR = { light: '#94a3b8', dark: '#475569' }
+const MODEL_HUES = [160, 270, 200, 38, 330, 220, 15, 280, 120, 350, 190, 45, 300, 80, 250, 170, 310, 55, 230, 100]
+
+function modelSeriesColor(index: number, isDark: boolean): string {
+  const h = MODEL_HUES[index % MODEL_HUES.length]
+  return `hsl(${h}, 62%, ${isDark ? '52%' : '46%'})`
+}
 
 const BILLING_DAY_STORAGE_KEY = 'cursor-dashboard-billing-cycle-day'
 
@@ -109,6 +141,31 @@ function changeColor(n: number | null | undefined): string {
   return 'text-slate-500 dark:text-slate-400'
 }
 
+function fmtShareDelta(n: number | null | undefined): string {
+  if (n == null) return '—'
+  const sign = n > 0 ? '+' : ''
+  return `${sign}${(n * 100).toFixed(1)}pt`
+}
+
+function poolSharesFallback(
+  byPool: PoolValues,
+  total: number,
+): PoolValues {
+  return {
+    Auto: total > 0 ? byPool.Auto / total : 0,
+    Composer: total > 0 ? byPool.Composer / total : 0,
+    API: total > 0 ? byPool.API / total : 0,
+  }
+}
+
+function getCostShare(p: PeriodEntry): PoolValues {
+  return p.costShareByPool ?? poolSharesFallback(p.costByPool, p.totalCost)
+}
+
+function getTokenShare(p: PeriodEntry): PoolValues {
+  return p.tokenShareByPool ?? poolSharesFallback(p.tokensByPool, p.totalTokens)
+}
+
 function shortPeriodLabel(p: PeriodEntry, mode: ViewMode): string {
   if (mode === 'calendar') {
     const [, m] = p.key.split('-')
@@ -116,6 +173,118 @@ function shortPeriodLabel(p: PeriodEntry, mode: ViewMode): string {
   }
   const start = p.startDate.slice(5).replace('-', '/')
   return start
+}
+
+function buildModelStackedBarData(
+  periods: PeriodEntry[],
+  mode: ViewMode,
+  topN: number,
+  isDark: boolean,
+) {
+  const otherColor = isDark ? PIE_OTHER_COLOR.dark : PIE_OTHER_COLOR.light
+  const allModels = new Set<string>()
+  const modelTotals = new Map<string, number>()
+
+  const bars = periods.map((p) => {
+    const source =
+      p.modelFrequency.length > 0 ? p.modelFrequency : p.topModels
+    const top = [...source].sort((a, b) => b.cost - a.cost).slice(0, topN)
+    const topSum = top.reduce((s, m) => s + m.cost, 0)
+
+    const row: Record<string, string | number> = {
+      label: shortPeriodLabel(p, mode),
+    }
+    for (const m of top) {
+      row[m.model] = m.cost
+      allModels.add(m.model)
+      modelTotals.set(m.model, (modelTotals.get(m.model) ?? 0) + m.cost)
+    }
+    row['其他'] = Math.max(0, p.totalCost - topSum)
+    return row
+  })
+
+  const sortedModels = [...allModels].sort(
+    (a, b) => (modelTotals.get(b) ?? 0) - (modelTotals.get(a) ?? 0),
+  )
+
+  const series = [
+    ...sortedModels.map((key, i) => ({
+      key,
+      color: modelSeriesColor(i, isDark),
+      isOther: false,
+    })),
+    { key: '其他', color: otherColor, isOther: true },
+  ]
+
+  const filledBars = bars.map((bar) => {
+    const filled: Record<string, string | number> = { ...bar }
+    for (const model of sortedModels) {
+      if (!(model in filled)) filled[model] = 0
+    }
+    if (!('其他' in filled)) filled['其他'] = 0
+    return filled
+  })
+
+  return { bars: filledBars, series, uniqueModelCount: sortedModels.length }
+}
+
+interface StackTooltipItem {
+  dataKey?: string | number
+  name?: string
+  value?: number
+  color?: string
+}
+
+function ModelStackTooltip({
+  active,
+  payload,
+  label,
+  isDark,
+  gridStroke,
+}: {
+  active?: boolean
+  payload?: StackTooltipItem[]
+  label?: string
+  isDark: boolean
+  gridStroke: string
+}) {
+  if (!active || !payload?.length) return null
+
+  const items = payload
+    .filter((p) => Number(p.value ?? 0) > 0.01)
+    .sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0))
+
+  if (items.length === 0) return null
+
+  const total = items.reduce((s, p) => s + Number(p.value ?? 0), 0)
+
+  return (
+    <div
+      className="rounded-lg px-3 py-2 shadow-xl text-xs min-w-[140px] max-w-[220px]"
+      style={{
+        background: isDark ? '#0f172a' : '#fff',
+        border: `1px solid ${gridStroke}`,
+      }}
+    >
+      <p className="mb-1.5 font-medium text-slate-500 dark:text-slate-400">{label}</p>
+      {items.map((p) => (
+        <div key={String(p.dataKey)} className="flex justify-between gap-3 mb-0.5">
+          <span className="truncate" style={{ color: p.color }} title={String(p.name)}>
+            {String(p.name)}
+          </span>
+          <span className="font-mono shrink-0 text-slate-700 dark:text-slate-300">
+            {fmtUsd(Number(p.value ?? 0))}
+          </span>
+        </div>
+      ))}
+      <div className="mt-1.5 border-t border-slate-200 dark:border-slate-700 pt-1 flex justify-between">
+        <span className="text-slate-400">合计</span>
+        <span className="font-mono font-medium text-slate-800 dark:text-slate-100">
+          {fmtUsd(total)}
+        </span>
+      </div>
+    </div>
+  )
 }
 
 // ────────── 子组件 ──────────
@@ -131,10 +300,52 @@ function ChangeBadge({ value, suffix = '' }: { value: number | null | undefined;
 
 interface PeriodCardProps {
   period: PeriodEntry
-  mode: ViewMode
 }
 
-function PeriodCard({ period, mode }: PeriodCardProps) {
+function PoolBreakdown({ period }: { period: PeriodEntry }) {
+  const costShare = getCostShare(period)
+  const tokenShare = getTokenShare(period)
+  const poolChanges = period.changes?.poolChanges
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] uppercase tracking-wider text-slate-400">池子分布 Auto / Composer / API</p>
+      <div className="grid grid-cols-3 gap-2 text-[11px]">
+        {POOLS.map((pool) => (
+          <div
+            key={pool}
+            className="rounded-lg border border-slate-100 dark:border-slate-800 px-2 py-2"
+            style={{ borderLeftWidth: 3, borderLeftColor: POOL_COLORS[pool] }}
+          >
+            <p className="font-medium text-slate-600 dark:text-slate-300">{pool}</p>
+            <p className="font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
+              {fmtUsd(period.costByPool[pool])}
+            </p>
+            <p className="font-mono text-sky-600 dark:text-sky-400 text-[10px]">
+              {fmtTokens(period.tokensByPool[pool])}
+            </p>
+            <p className="text-slate-400 mt-1">
+              花费 {fmtPct(costShare[pool])} · Token {fmtPct(tokenShare[pool])}
+            </p>
+            {poolChanges?.[pool] && (
+              <p className="text-[10px] mt-1 space-x-1">
+                <span className={changeColor(poolChanges[pool].costPct)}>
+                  {fmtChange(poolChanges[pool].costPct)}
+                </span>
+                <span className="text-slate-400">·</span>
+                <span className={changeColor(poolChanges[pool].costShareDelta)}>
+                  {fmtShareDelta(poolChanges[pool].costShareDelta)}
+                </span>
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PeriodCard({ period }: PeriodCardProps) {
   return (
     <article className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-5 shadow-sm space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-2">
@@ -189,6 +400,8 @@ function PeriodCard({ period, mode }: PeriodCardProps) {
         </div>
       </div>
 
+      <PoolBreakdown period={period} />
+
       <div>
         <p className="text-[10px] uppercase tracking-wider text-slate-400 mb-2">Top 3 模型（按花费）</p>
         {period.topModels.length === 0 ? (
@@ -216,20 +429,6 @@ function PeriodCard({ period, mode }: PeriodCardProps) {
           </ol>
         )}
       </div>
-
-      {mode === 'billing' && (
-        <div className="grid grid-cols-3 gap-2 text-[11px]">
-          {(['Auto', 'Composer', 'API'] as const).map((pool) => (
-            <div
-              key={pool}
-              className="rounded-lg border border-slate-100 dark:border-slate-800 px-2 py-1.5 text-center"
-            >
-              <p className="text-slate-400">{pool}</p>
-              <p className="font-mono font-medium">{fmtUsd(period.costByPool[pool])}</p>
-            </div>
-          ))}
-        </div>
-      )}
     </article>
   )
 }
@@ -242,6 +441,8 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('billing')
+  const [poolMetricMode, setPoolMetricMode] = useState<PoolMetricMode>('usd')
+  const [topModelCount, setTopModelCount] = useState<3 | 5>(5)
   const [billingCycleDay, setBillingCycleDay] = useState<number>(() => {
     const saved = localStorage.getItem(BILLING_DAY_STORAGE_KEY)
     if (saved) {
@@ -298,6 +499,39 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
       fastRatio: p.fastRatio * 100,
       rows: p.totalRows,
     }))
+  }, [activeGroup, viewMode])
+
+  const modelStackedBarData = useMemo(() => {
+    if (!activeGroup) return { bars: [], series: [], uniqueModelCount: 0 }
+    return buildModelStackedBarData(
+      activeGroup.periods,
+      viewMode,
+      topModelCount,
+      isDark,
+    )
+  }, [activeGroup, viewMode, topModelCount, isDark])
+
+  const poolChartData = useMemo(() => {
+    if (!activeGroup) return []
+    return activeGroup.periods.map((p) => {
+      const costShare = getCostShare(p)
+      const tokenShare = getTokenShare(p)
+      return {
+        label: shortPeriodLabel(p, viewMode),
+        costAuto: p.costByPool.Auto,
+        costComposer: p.costByPool.Composer,
+        costAPI: p.costByPool.API,
+        tokensAuto: p.tokensByPool.Auto / 1_000_000,
+        tokensComposer: p.tokensByPool.Composer / 1_000_000,
+        tokensAPI: p.tokensByPool.API / 1_000_000,
+        shareAutoCost: costShare.Auto * 100,
+        shareComposerCost: costShare.Composer * 100,
+        shareAPICost: costShare.API * 100,
+        shareAutoToken: tokenShare.Auto * 100,
+        shareComposerToken: tokenShare.Composer * 100,
+        shareAPIToken: tokenShare.API * 100,
+      }
+    })
   }, [activeGroup, viewMode])
 
   const gridStroke = isDark ? '#334155' : '#e2e8f0'
@@ -394,25 +628,63 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
       {chartData.length > 0 && (
         <section className="grid gap-6 xl:grid-cols-2">
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
-            <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400 mb-4">
-              花费趋势
-            </h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-                <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
-                <YAxis tick={{ fill: tickFill, fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
-                <Tooltip
-                  contentStyle={{
-                    background: isDark ? '#0f172a' : '#fff',
-                    border: `1px solid ${gridStroke}`,
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
-                />
-                <Bar dataKey="cost" fill="#10b981" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400">
+                花费趋势（按模型堆叠）
+              </h3>
+              <div className="flex gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-0.5">
+                {([3, 5] as const).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setTopModelCount(n)}
+                    className={`px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
+                      topModelCount === n
+                        ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+                        : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                    }`}
+                  >
+                    Top {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {modelStackedBarData.bars.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-16">无数据</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={modelStackedBarData.bars}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                  <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
+                  <YAxis
+                    tick={{ fill: tickFill, fontSize: 11 }}
+                    tickFormatter={(v) => `$${v}`}
+                  />
+                  <Tooltip
+                    content={
+                      <ModelStackTooltip isDark={isDark} gridStroke={gridStroke} />
+                    }
+                  />
+                  {modelStackedBarData.series.map((s, i) => (
+                    <Bar
+                      key={s.key}
+                      dataKey={s.key}
+                      name={s.key}
+                      stackId="models"
+                      fill={s.color}
+                      radius={
+                        i === modelStackedBarData.series.length - 1
+                          ? [4, 4, 0, 0]
+                          : [0, 0, 0, 0]
+                      }
+                    />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-1">
+              每月独立 Top {topModelCount} · 悬停柱子查看该月明细 · 其余为灰色「其他」
+            </p>
           </div>
 
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
@@ -467,6 +739,128 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
         </section>
       )}
 
+      {/* 池子分布趋势 */}
+      {poolChartData.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400">
+              Auto / Composer / API 池变化
+            </h3>
+            <div className="flex gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-0.5">
+              {(
+                [
+                  { id: 'usd' as const, label: '花费 USD' },
+                  { id: 'tokens' as const, label: 'Token' },
+                  { id: 'share' as const, label: '占比 %' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setPoolMetricMode(opt.id)}
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                    poolMetricMode === opt.id
+                      ? 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100'
+                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
+              <h4 className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-4">
+                {poolMetricMode === 'usd' && '各池花费（堆叠）'}
+                {poolMetricMode === 'tokens' && '各池 Token（堆叠，百万）'}
+                {poolMetricMode === 'share' && '各池花费占比（%）'}
+              </h4>
+              <ResponsiveContainer width="100%" height={240}>
+                {poolMetricMode === 'share' ? (
+                  <LineChart data={poolChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                    <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
+                    <YAxis
+                      tick={{ fill: tickFill, fontSize: 11 }}
+                      tickFormatter={(v) => `${v}%`}
+                      domain={[0, 100]}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: isDark ? '#0f172a' : '#fff',
+                        border: `1px solid ${gridStroke}`,
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                      formatter={(v) => [`${Number(v).toFixed(1)}%`, '']}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey="shareAutoCost" name="Auto" stroke={POOL_COLORS.Auto} strokeWidth={2} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="shareComposerCost" name="Composer" stroke={POOL_COLORS.Composer} strokeWidth={2} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="shareAPICost" name="API" stroke={POOL_COLORS.API} strokeWidth={2} dot={{ r: 3 }} />
+                  </LineChart>
+                ) : (
+                  <BarChart data={poolChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                    <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
+                    <YAxis
+                      tick={{ fill: tickFill, fontSize: 11 }}
+                      tickFormatter={(v) =>
+                        poolMetricMode === 'usd' ? `$${v}` : `${v}M`
+                      }
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: isDark ? '#0f172a' : '#fff',
+                        border: `1px solid ${gridStroke}`,
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar dataKey={poolMetricMode === 'usd' ? 'costAuto' : 'tokensAuto'} name="Auto" stackId="pool" fill={POOL_COLORS.Auto} />
+                    <Bar dataKey={poolMetricMode === 'usd' ? 'costComposer' : 'tokensComposer'} name="Composer" stackId="pool" fill={POOL_COLORS.Composer} />
+                    <Bar dataKey={poolMetricMode === 'usd' ? 'costAPI' : 'tokensAPI'} name="API" stackId="pool" fill={POOL_COLORS.API} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                )}
+              </ResponsiveContainer>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
+              <h4 className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-4">
+                各池 Token 占比（%）
+              </h4>
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={poolChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                  <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
+                  <YAxis
+                    tick={{ fill: tickFill, fontSize: 11 }}
+                    tickFormatter={(v) => `${v}%`}
+                    domain={[0, 100]}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: isDark ? '#0f172a' : '#fff',
+                      border: `1px solid ${gridStroke}`,
+                      borderRadius: 8,
+                      fontSize: 12,
+                    }}
+                    formatter={(v) => [`${Number(v).toFixed(1)}%`, '']}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Line type="monotone" dataKey="shareAutoToken" name="Auto" stroke={POOL_COLORS.Auto} strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="shareComposerToken" name="Composer" stroke={POOL_COLORS.Composer} strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="shareAPIToken" name="API" stroke={POOL_COLORS.API} strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* 汇总表 */}
       <section className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
         <div className="overflow-x-auto">
@@ -477,13 +871,19 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                 <th className="px-4 py-3 font-medium text-right">花费</th>
                 <th className="px-4 py-3 font-medium text-right">环比</th>
                 <th className="px-4 py-3 font-medium text-right">Token</th>
+                <th className="px-4 py-3 font-medium text-right">Auto%</th>
+                <th className="px-4 py-3 font-medium text-right">Composer%</th>
+                <th className="px-4 py-3 font-medium text-right">API%</th>
                 <th className="px-4 py-3 font-medium text-right">Fast%</th>
                 <th className="px-4 py-3 font-medium text-right">请求</th>
                 <th className="px-4 py-3 font-medium">Top 3 模型</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {[...activeGroup.periods].reverse().map((p) => (
+              {[...activeGroup.periods].reverse().map((p) => {
+                const costShare = getCostShare(p)
+                const poolChanges = p.changes?.poolChanges
+                return (
                 <tr
                   key={p.key}
                   className="hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-colors"
@@ -499,6 +899,30 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                     <ChangeBadge value={p.changes?.costPct} />
                   </td>
                   <td className="px-4 py-3 text-right font-mono">{fmtTokens(p.totalTokens)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <span className="font-mono" style={{ color: POOL_COLORS.Auto }}>{fmtPct(costShare.Auto)}</span>
+                    {poolChanges?.Auto && (
+                      <p className={`text-[10px] font-mono ${changeColor(poolChanges.Auto.costShareDelta)}`}>
+                        {fmtShareDelta(poolChanges.Auto.costShareDelta)}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <span className="font-mono" style={{ color: POOL_COLORS.Composer }}>{fmtPct(costShare.Composer)}</span>
+                    {poolChanges?.Composer && (
+                      <p className={`text-[10px] font-mono ${changeColor(poolChanges.Composer.costShareDelta)}`}>
+                        {fmtShareDelta(poolChanges.Composer.costShareDelta)}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <span className="font-mono" style={{ color: POOL_COLORS.API }}>{fmtPct(costShare.API)}</span>
+                    {poolChanges?.API && (
+                      <p className={`text-[10px] font-mono ${changeColor(poolChanges.API.costShareDelta)}`}>
+                        {fmtShareDelta(poolChanges.API.costShareDelta)}
+                      </p>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right font-mono">{fmtPct(p.fastRatio)}</td>
                   <td className="px-4 py-3 text-right font-mono">{p.totalRows.toLocaleString()}</td>
                   <td className="px-4 py-3">
@@ -515,7 +939,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
@@ -524,7 +948,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
       {/* 周期卡片 */}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {[...activeGroup.periods].reverse().map((p) => (
-          <PeriodCard key={p.key} period={p} mode={viewMode} />
+          <PeriodCard key={p.key} period={p} />
         ))}
       </section>
     </div>

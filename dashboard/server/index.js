@@ -210,6 +210,34 @@ function pctChange(current, previous) {
   return (current - previous) / previous;
 }
 
+const POOLS = ['Auto', 'Composer', 'API'];
+
+function poolShares(costByPool, tokensByPool, totalCost, totalTokens) {
+  /** @type {Record<string, number>} */
+  const costShare = {};
+  /** @type {Record<string, number>} */
+  const tokenShare = {};
+  for (const pool of POOLS) {
+    costShare[pool] = totalCost > 0 ? costByPool[pool] / totalCost : 0;
+    tokenShare[pool] = totalTokens > 0 ? tokensByPool[pool] / totalTokens : 0;
+  }
+  return { costShare, tokenShare };
+}
+
+function poolChangesFromPrev(cur, prev) {
+  /** @type {Record<string, { costPct: number|null, tokensPct: number|null, costShareDelta: number, tokenShareDelta: number }>} */
+  const out = {};
+  for (const pool of POOLS) {
+    out[pool] = {
+      costPct: pctChange(cur.costByPool[pool], prev.costByPool[pool]),
+      tokensPct: pctChange(cur.tokensByPool[pool], prev.tokensByPool[pool]),
+      costShareDelta: cur.costShareByPool[pool] - prev.costShareByPool[pool],
+      tokenShareDelta: cur.tokenShareByPool[pool] - prev.tokenShareByPool[pool],
+    };
+  }
+  return out;
+}
+
 function finalizePeriodList(periodMap, kind, billingCycleDay) {
   const sortedKeys = [...periodMap.keys()].sort();
   const finalized = sortedKeys.map((key) => {
@@ -223,6 +251,12 @@ function finalizePeriodList(periodMap, kind, billingCycleDay) {
 
     const models = [...agg.byModel.values()].sort((a, b) => b.cost - a.cost);
     const totalModelRequests = models.reduce((s, m) => s + m.requests, 0);
+    const { costShare, tokenShare } = poolShares(
+      agg.costByPool,
+      agg.tokensByPool,
+      agg.totalCost,
+      agg.totalTokens,
+    );
 
     return {
       key,
@@ -238,6 +272,8 @@ function finalizePeriodList(periodMap, kind, billingCycleDay) {
       fastRowRatio: agg.totalRows > 0 ? agg.fastRows / agg.totalRows : 0,
       costByPool: agg.costByPool,
       tokensByPool: agg.tokensByPool,
+      costShareByPool: costShare,
+      tokenShareByPool: tokenShare,
       topModels: models.slice(0, 3),
       modelFrequency: models
         .slice()
@@ -260,6 +296,7 @@ function finalizePeriodList(periodMap, kind, billingCycleDay) {
           tokensPct: pctChange(cur.totalTokens, prev.totalTokens),
           rowsPct: pctChange(cur.totalRows, prev.totalRows),
           fastRatioDelta: cur.fastRatio - prev.fastRatio,
+          poolChanges: poolChangesFromPrev(cur, prev),
         }
       : null;
   }
