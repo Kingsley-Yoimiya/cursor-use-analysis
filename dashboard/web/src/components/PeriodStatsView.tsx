@@ -14,6 +14,7 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
+  Cell,
 } from 'recharts'
 import { useIsDark } from '../context/ThemeContext'
 
@@ -87,7 +88,6 @@ interface PeriodStatsResponse {
 }
 
 type ViewMode = 'calendar' | 'billing'
-type PoolMetricMode = 'usd' | 'tokens' | 'share'
 
 const POOLS = ['Auto', 'Composer', 'API'] as const
 const POOL_COLORS: Record<(typeof POOLS)[number], string> = {
@@ -105,6 +105,34 @@ function modelSeriesColor(index: number, isDark: boolean): string {
 }
 
 const BILLING_DAY_STORAGE_KEY = 'cursor-dashboard-billing-cycle-day'
+/** 周期数达到此值时，趋势图改为单列全宽 */
+const FULL_WIDTH_MODEL_CHART_MIN_PERIODS = 9
+
+function compactChartShell(compact: boolean): string {
+  return compact ? 'mx-auto w-full max-w-[280px] sm:max-w-xs' : 'w-full'
+}
+
+function trendGridClass(compact: boolean): string {
+  return compact ? 'grid gap-6 md:grid-cols-2' : 'grid gap-6 grid-cols-1'
+}
+
+function barLayout(compact: boolean, periodCount: number) {
+  return {
+    height: compact ? 200 : 260,
+    maxBarSize: compact
+      ? Math.min(36, Math.max(20, Math.floor(280 / Math.max(periodCount, 1))))
+      : Math.min(48, Math.max(24, Math.floor(720 / Math.max(periodCount, 1)))),
+    categoryGap: compact ? '28%' : '12%',
+    yAxisWidth: compact ? 44 : 52,
+  }
+}
+
+const tooltipBoxStyle = (isDark: boolean, gridStroke: string) => ({
+  background: isDark ? '#0f172a' : '#fff',
+  border: `1px solid ${gridStroke}`,
+  borderRadius: 8,
+  fontSize: 12,
+})
 
 // ────────── 格式化 ──────────
 
@@ -175,88 +203,116 @@ function shortPeriodLabel(p: PeriodEntry, mode: ViewMode): string {
   return start
 }
 
+interface ModelStackLayerMeta {
+  key: string
+  color: string
+  value: number
+}
+
+interface ModelStackBarRow {
+  label: string
+  __layerMeta: ModelStackLayerMeta[]
+  [key: string]: string | number | ModelStackLayerMeta[] | undefined
+}
+
 function buildModelStackedBarData(
   periods: PeriodEntry[],
   mode: ViewMode,
   topN: number,
   isDark: boolean,
+  metric: 'cost' | 'tokens',
 ) {
   const otherColor = isDark ? PIE_OTHER_COLOR.dark : PIE_OTHER_COLOR.light
   const allModels = new Set<string>()
   const modelTotals = new Map<string, number>()
+  const modelColorMap = new Map<string, string>()
 
-  const bars = periods.map((p) => {
+  const rawBars = periods.map((p) => {
     const source =
       p.modelFrequency.length > 0 ? p.modelFrequency : p.topModels
-    const top = [...source].sort((a, b) => b.cost - a.cost).slice(0, topN)
-    const topSum = top.reduce((s, m) => s + m.cost, 0)
+    const top = [...source]
+      .sort((a, b) =>
+        metric === 'cost' ? b.cost - a.cost : b.tokens - a.tokens,
+      )
+      .slice(0, topN)
+    const topSumRaw = top.reduce(
+      (s, m) => s + (metric === 'cost' ? m.cost : m.tokens),
+      0,
+    )
+    const periodTotalRaw =
+      metric === 'cost' ? p.totalCost : p.totalTokens
+    const toDisplay = (n: number) =>
+      metric === 'cost' ? n : n / 1_000_000
 
-    const row: Record<string, string | number> = {
-      label: shortPeriodLabel(p, mode),
-    }
+    const entries: { key: string; value: number }[] = []
     for (const m of top) {
-      row[m.model] = m.cost
+      const raw = metric === 'cost' ? m.cost : m.tokens
+      const value = toDisplay(raw)
+      if (value > 0) entries.push({ key: m.model, value })
       allModels.add(m.model)
-      modelTotals.set(m.model, (modelTotals.get(m.model) ?? 0) + m.cost)
+      modelTotals.set(m.model, (modelTotals.get(m.model) ?? 0) + raw)
     }
-    row['其他'] = Math.max(0, p.totalCost - topSum)
-    return row
+    const otherVal = Math.max(0, toDisplay(periodTotalRaw - topSumRaw))
+    if (otherVal > 0) entries.push({ key: '其他', value: otherVal })
+
+    return { label: shortPeriodLabel(p, mode), entries }
   })
 
   const sortedModels = [...allModels].sort(
     (a, b) => (modelTotals.get(b) ?? 0) - (modelTotals.get(a) ?? 0),
   )
+  sortedModels.forEach((key, i) => {
+    modelColorMap.set(key, modelSeriesColor(i, isDark))
+  })
+  modelColorMap.set('其他', otherColor)
 
-  const series = [
-    ...sortedModels.map((key, i) => ({
+  const layerCount = topN + 1
+  const bars: ModelStackBarRow[] = rawBars.map(({ label, entries }) => {
+    const sorted = [...entries].sort((a, b) => b.value - a.value)
+    const layerMeta: ModelStackLayerMeta[] = sorted.map(({ key, value }) => ({
       key,
-      color: modelSeriesColor(i, isDark),
-      isOther: false,
-    })),
-    { key: '其他', color: otherColor, isOther: true },
-  ]
+      value,
+      color: modelColorMap.get(key) ?? otherColor,
+    }))
 
-  const filledBars = bars.map((bar) => {
-    const filled: Record<string, string | number> = { ...bar }
-    for (const model of sortedModels) {
-      if (!(model in filled)) filled[model] = 0
+    const row: ModelStackBarRow = { label, __layerMeta: layerMeta }
+    for (let i = 0; i < layerCount; i++) {
+      row[`__layer${i}`] = layerMeta[i]?.value ?? 0
     }
-    if (!('其他' in filled)) filled['其他'] = 0
-    return filled
+    return row
   })
 
-  return { bars: filledBars, series, uniqueModelCount: sortedModels.length }
-}
-
-interface StackTooltipItem {
-  dataKey?: string | number
-  name?: string
-  value?: number
-  color?: string
+  return { bars, layerCount, uniqueModelCount: sortedModels.length }
 }
 
 function ModelStackTooltip({
   active,
-  payload,
   label,
   isDark,
   gridStroke,
+  metric,
+  bars,
 }: {
   active?: boolean
-  payload?: StackTooltipItem[]
   label?: string
   isDark: boolean
   gridStroke: string
+  metric: 'cost' | 'tokens'
+  bars: ModelStackBarRow[]
 }) {
-  if (!active || !payload?.length) return null
+  if (!active || !label) return null
 
-  const items = payload
-    .filter((p) => Number(p.value ?? 0) > 0.01)
-    .sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0))
+  const row = bars.find((b) => b.label === label)
+  if (!row?.__layerMeta?.length) return null
+
+  const minVal = metric === 'cost' ? 0.01 : 0.0001
+  const items = row.__layerMeta.filter((m) => m.value > minVal)
 
   if (items.length === 0) return null
 
-  const total = items.reduce((s, p) => s + Number(p.value ?? 0), 0)
+  const total = items.reduce((s, m) => s + m.value, 0)
+  const fmtVal = (v: number) =>
+    metric === 'cost' ? fmtUsd(v) : `${v.toFixed(2)}M (${fmtTokens(v * 1_000_000)})`
 
   return (
     <div
@@ -267,23 +323,86 @@ function ModelStackTooltip({
       }}
     >
       <p className="mb-1.5 font-medium text-slate-500 dark:text-slate-400">{label}</p>
-      {items.map((p) => (
-        <div key={String(p.dataKey)} className="flex justify-between gap-3 mb-0.5">
-          <span className="truncate" style={{ color: p.color }} title={String(p.name)}>
-            {String(p.name)}
+      {items.map((m) => (
+        <div key={m.key} className="flex justify-between gap-3 mb-0.5">
+          <span className="truncate" style={{ color: m.color }} title={m.key}>
+            {m.key}
           </span>
           <span className="font-mono shrink-0 text-slate-700 dark:text-slate-300">
-            {fmtUsd(Number(p.value ?? 0))}
+            {fmtVal(m.value)}
           </span>
         </div>
       ))}
       <div className="mt-1.5 border-t border-slate-200 dark:border-slate-700 pt-1 flex justify-between">
         <span className="text-slate-400">合计</span>
         <span className="font-mono font-medium text-slate-800 dark:text-slate-100">
-          {fmtUsd(total)}
+          {fmtVal(total)}
         </span>
       </div>
     </div>
+  )
+}
+
+interface ModelStackedBarChartProps {
+  bars: ModelStackBarRow[]
+  layerCount: number
+  metric: 'cost' | 'tokens'
+  stackId: string
+  barsLayout: ReturnType<typeof barLayout>
+  gridStroke: string
+  tickFill: string
+  isDark: boolean
+}
+
+function ModelStackedBarChart({
+  bars,
+  layerCount,
+  metric,
+  stackId,
+  barsLayout,
+  gridStroke,
+  tickFill,
+  isDark,
+}: ModelStackedBarChartProps) {
+  return (
+    <BarChart data={bars} barCategoryGap={barsLayout.categoryGap}>
+      <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+      <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
+      <YAxis
+        tick={{ fill: tickFill, fontSize: 11 }}
+        tickFormatter={(v) => (metric === 'cost' ? `$${v}` : `${v}M`)}
+        width={barsLayout.yAxisWidth}
+      />
+      <Tooltip
+        content={
+          <ModelStackTooltip
+            isDark={isDark}
+            gridStroke={gridStroke}
+            metric={metric}
+            bars={bars}
+          />
+        }
+      />
+      {Array.from({ length: layerCount }, (_, layerIdx) => (
+        <Bar
+          key={layerIdx}
+          dataKey={`__layer${layerIdx}`}
+          stackId={stackId}
+          maxBarSize={barsLayout.maxBarSize}
+          radius={
+            layerIdx === layerCount - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]
+          }
+          isAnimationActive={false}
+        >
+          {bars.map((entry, index) => (
+            <Cell
+              key={`${layerIdx}-${index}`}
+              fill={entry.__layerMeta[layerIdx]?.color ?? 'transparent'}
+            />
+          ))}
+        </Bar>
+      ))}
+    </BarChart>
   )
 }
 
@@ -441,7 +560,6 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('billing')
-  const [poolMetricMode, setPoolMetricMode] = useState<PoolMetricMode>('usd')
   const [topModelCount, setTopModelCount] = useState<3 | 5>(5)
   const [billingCycleDay, setBillingCycleDay] = useState<number>(() => {
     const saved = localStorage.getItem(BILLING_DAY_STORAGE_KEY)
@@ -502,12 +620,24 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
   }, [activeGroup, viewMode])
 
   const modelStackedBarData = useMemo(() => {
-    if (!activeGroup) return { bars: [], series: [], uniqueModelCount: 0 }
+    if (!activeGroup) return { bars: [], layerCount: 0, uniqueModelCount: 0 }
     return buildModelStackedBarData(
       activeGroup.periods,
       viewMode,
       topModelCount,
       isDark,
+      'cost',
+    )
+  }, [activeGroup, viewMode, topModelCount, isDark])
+
+  const modelTokenStackedBarData = useMemo(() => {
+    if (!activeGroup) return { bars: [], layerCount: 0, uniqueModelCount: 0 }
+    return buildModelStackedBarData(
+      activeGroup.periods,
+      viewMode,
+      topModelCount,
+      isDark,
+      'tokens',
     )
   }, [activeGroup, viewMode, topModelCount, isDark])
 
@@ -562,6 +692,9 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
 
   const dayMin = data.billingCycleDayRange?.min ?? 1
   const dayMax = data.billingCycleDayRange?.max ?? 28
+  const periodCount = chartData.length
+  const compactTrendLayout = periodCount < FULL_WIDTH_MODEL_CHART_MIN_PERIODS
+  const bars = barLayout(compactTrendLayout, periodCount)
 
   return (
     <div className="space-y-6">
@@ -624,241 +757,179 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
         </span>
       </section>
 
-      {/* 趋势图 */}
-      {chartData.length > 0 && (
-        <section className="grid gap-6 xl:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-              <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400">
-                花费趋势（按模型堆叠）
-              </h3>
-              <div className="flex gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-0.5">
-                {([3, 5] as const).map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => setTopModelCount(n)}
-                    className={`px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
-                      topModelCount === n
-                        ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
-                        : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                    }`}
-                  >
-                    Top {n}
-                  </button>
-                ))}
+      {/* 花费趋势 + Token 趋势 */}
+      {chartData.length > 0 && poolChartData.length > 0 && (
+        <>
+          <section className="space-y-3">
+            <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400">
+              花费趋势
+            </h3>
+            <div className={trendGridClass(compactTrendLayout)}>
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                  <h4 className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                    按模型堆叠（Top {topModelCount}）
+                  </h4>
+                  <div className="flex gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-0.5">
+                    {([3, 5] as const).map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setTopModelCount(n)}
+                        className={`px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
+                          topModelCount === n
+                            ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+                            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        Top {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {modelStackedBarData.bars.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-16">无数据</p>
+                ) : (
+                  <div className={compactChartShell(compactTrendLayout)}>
+                    <ResponsiveContainer width="100%" height={bars.height}>
+                      <ModelStackedBarChart
+                        bars={modelStackedBarData.bars}
+                        layerCount={modelStackedBarData.layerCount}
+                        metric="cost"
+                        stackId="models"
+                        barsLayout={bars}
+                        gridStroke={gridStroke}
+                        tickFill={tickFill}
+                        isDark={isDark}
+                      />
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
+                <h4 className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-4">
+                  按模型堆叠（Token Top {topModelCount}）
+                </h4>
+                {modelTokenStackedBarData.bars.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-16">无数据</p>
+                ) : (
+                  <div className={compactChartShell(compactTrendLayout)}>
+                    <ResponsiveContainer width="100%" height={bars.height}>
+                      <ModelStackedBarChart
+                        bars={modelTokenStackedBarData.bars}
+                        layerCount={modelTokenStackedBarData.layerCount}
+                        metric="tokens"
+                        stackId="models-token"
+                        barsLayout={bars}
+                        gridStroke={gridStroke}
+                        tickFill={tickFill}
+                        isDark={isDark}
+                      />
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </div>
             </div>
-            {modelStackedBarData.bars.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center py-16">无数据</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={modelStackedBarData.bars}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-                  <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
-                  <YAxis
-                    tick={{ fill: tickFill, fontSize: 11 }}
-                    tickFormatter={(v) => `$${v}`}
-                  />
-                  <Tooltip
-                    content={
-                      <ModelStackTooltip isDark={isDark} gridStroke={gridStroke} />
-                    }
-                  />
-                  {modelStackedBarData.series.map((s, i) => (
-                    <Bar
-                      key={s.key}
-                      dataKey={s.key}
-                      name={s.key}
-                      stackId="models"
-                      fill={s.color}
-                      radius={
-                        i === modelStackedBarData.series.length - 1
-                          ? [4, 4, 0, 0]
-                          : [0, 0, 0, 0]
-                      }
-                    />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-1">
-              每月独立 Top {topModelCount} · 悬停柱子查看该月明细 · 其余为灰色「其他」
-            </p>
-          </div>
+          </section>
 
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
-            <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400 mb-4">
-              Fast 比例 & Token 量
-            </h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-                <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
-                <YAxis
-                  yAxisId="left"
-                  tick={{ fill: tickFill, fontSize: 11 }}
-                  tickFormatter={(v) => `${v}%`}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fill: tickFill, fontSize: 11 }}
-                  tickFormatter={(v) => `${v}M`}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: isDark ? '#0f172a' : '#fff',
-                    border: `1px solid ${gridStroke}`,
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey="fastRatio"
-                  name="Fast %"
-                  stroke="#8b5cf6"
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                />
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="tokens"
-                  name="Token (M)"
-                  stroke="#0ea5e9"
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      )}
-
-      {/* 池子分布趋势 */}
-      {poolChartData.length > 0 && (
-        <section className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <section className="space-y-3">
             <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400">
-              Auto / Composer / API 池变化
+              Token 趋势
             </h3>
-            <div className="flex gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-0.5">
-              {(
-                [
-                  { id: 'usd' as const, label: '花费 USD' },
-                  { id: 'tokens' as const, label: 'Token' },
-                  { id: 'share' as const, label: '占比 %' },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setPoolMetricMode(opt.id)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
-                    poolMetricMode === opt.id
-                      ? 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100'
-                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
+            <div className={trendGridClass(compactTrendLayout)}>
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
+                <h4 className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-4">
+                  总量 & Fast 比例
+                </h4>
+                <div className={compactChartShell(compactTrendLayout)}>
+                  <ResponsiveContainer width="100%" height={bars.height}>
+                    <LineChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                      <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
+                      <YAxis
+                        yAxisId="left"
+                        tick={{ fill: tickFill, fontSize: 11 }}
+                        tickFormatter={(v) => `${v}%`}
+                        width={bars.yAxisWidth}
+                      />
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        tick={{ fill: tickFill, fontSize: 11 }}
+                        tickFormatter={(v) => `${v}M`}
+                        width={bars.yAxisWidth}
+                      />
+                      <Tooltip contentStyle={tooltipBoxStyle(isDark, gridStroke)} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Line
+                        yAxisId="left"
+                        type="monotone"
+                        dataKey="fastRatio"
+                        name="Fast %"
+                        stroke="#8b5cf6"
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                      />
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="tokens"
+                        name="Token (M)"
+                        stroke="#0ea5e9"
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
 
-          <div className="grid gap-6 xl:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
-              <h4 className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-4">
-                {poolMetricMode === 'usd' && '各池花费（堆叠）'}
-                {poolMetricMode === 'tokens' && '各池 Token（堆叠，百万）'}
-                {poolMetricMode === 'share' && '各池花费占比（%）'}
-              </h4>
-              <ResponsiveContainer width="100%" height={240}>
-                {poolMetricMode === 'share' ? (
-                  <LineChart data={poolChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-                    <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
-                    <YAxis
-                      tick={{ fill: tickFill, fontSize: 11 }}
-                      tickFormatter={(v) => `${v}%`}
-                      domain={[0, 100]}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: isDark ? '#0f172a' : '#fff',
-                        border: `1px solid ${gridStroke}`,
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                      formatter={(v) => [`${Number(v).toFixed(1)}%`, '']}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Line type="monotone" dataKey="shareAutoCost" name="Auto" stroke={POOL_COLORS.Auto} strokeWidth={2} dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="shareComposerCost" name="Composer" stroke={POOL_COLORS.Composer} strokeWidth={2} dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="shareAPICost" name="API" stroke={POOL_COLORS.API} strokeWidth={2} dot={{ r: 3 }} />
-                  </LineChart>
-                ) : (
-                  <BarChart data={poolChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-                    <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
-                    <YAxis
-                      tick={{ fill: tickFill, fontSize: 11 }}
-                      tickFormatter={(v) =>
-                        poolMetricMode === 'usd' ? `$${v}` : `${v}M`
-                      }
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: isDark ? '#0f172a' : '#fff',
-                        border: `1px solid ${gridStroke}`,
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey={poolMetricMode === 'usd' ? 'costAuto' : 'tokensAuto'} name="Auto" stackId="pool" fill={POOL_COLORS.Auto} />
-                    <Bar dataKey={poolMetricMode === 'usd' ? 'costComposer' : 'tokensComposer'} name="Composer" stackId="pool" fill={POOL_COLORS.Composer} />
-                    <Bar dataKey={poolMetricMode === 'usd' ? 'costAPI' : 'tokensAPI'} name="API" stackId="pool" fill={POOL_COLORS.API} radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                )}
-              </ResponsiveContainer>
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
+                <h4 className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-4">
+                  Auto / Composer / API 池（Token）
+                </h4>
+                <div className={compactChartShell(compactTrendLayout)}>
+                  <ResponsiveContainer width="100%" height={bars.height}>
+                    <BarChart data={poolChartData} barCategoryGap={bars.categoryGap}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                      <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
+                      <YAxis
+                        tick={{ fill: tickFill, fontSize: 11 }}
+                        tickFormatter={(v) => `${v}M`}
+                        width={bars.yAxisWidth}
+                      />
+                      <Tooltip contentStyle={tooltipBoxStyle(isDark, gridStroke)} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Bar
+                        dataKey="tokensAuto"
+                        name="Auto"
+                        stackId="pool-tokens"
+                        fill={POOL_COLORS.Auto}
+                        maxBarSize={bars.maxBarSize}
+                      />
+                      <Bar
+                        dataKey="tokensComposer"
+                        name="Composer"
+                        stackId="pool-tokens"
+                        fill={POOL_COLORS.Composer}
+                        maxBarSize={bars.maxBarSize}
+                      />
+                      <Bar
+                        dataKey="tokensAPI"
+                        name="API"
+                        stackId="pool-tokens"
+                        fill={POOL_COLORS.API}
+                        maxBarSize={bars.maxBarSize}
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
             </div>
-
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
-              <h4 className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-4">
-                各池 Token 占比（%）
-              </h4>
-              <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={poolChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-                  <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
-                  <YAxis
-                    tick={{ fill: tickFill, fontSize: 11 }}
-                    tickFormatter={(v) => `${v}%`}
-                    domain={[0, 100]}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: isDark ? '#0f172a' : '#fff',
-                      border: `1px solid ${gridStroke}`,
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                    formatter={(v) => [`${Number(v).toFixed(1)}%`, '']}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Line type="monotone" dataKey="shareAutoToken" name="Auto" stroke={POOL_COLORS.Auto} strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="shareComposerToken" name="Composer" stroke={POOL_COLORS.Composer} strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="shareAPIToken" name="API" stroke={POOL_COLORS.API} strokeWidth={2} dot={{ r: 3 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </section>
+          </section>
+        </>
       )}
 
       {/* 汇总表 */}
