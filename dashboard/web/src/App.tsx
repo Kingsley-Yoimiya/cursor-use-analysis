@@ -11,6 +11,7 @@ import { ModelUsageChart } from './components/ModelUsageChart'
 import { ModelDetailedChart } from './components/ModelDetailedChart'
 import { ModelLeaderboard } from './components/ModelLeaderboard'
 import { PeriodStatsView } from './components/PeriodStatsView'
+import { ReimbursementView } from './components/ReimbursementView'
 import { ThemeContext } from './context/ThemeContext'
 
 // ────────── 类型定义 ──────────
@@ -43,7 +44,7 @@ interface DailyResponse {
   error?: string
 }
 
-type Tab = 'overview' | 'model-details' | 'period-stats'
+type Tab = 'overview' | 'model-details' | 'period-stats' | 'reimbursement'
 
 // ────────── 主应用组件 ──────────
 
@@ -116,6 +117,7 @@ function App() {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: '概览 Overview' },
     { id: 'period-stats', label: '周期统计 Period Stats' },
+    { id: 'reimbursement', label: '报销导出 Reimburse' },
     { id: 'model-details', label: '模型详情 Model Details' },
   ]
 
@@ -294,6 +296,16 @@ function App() {
                   <ModelUsageChart daily={filteredDaily} />
                 </section>
               )}
+            </div>
+          )}
+
+          {/* ── 报销导出 Tab ── */}
+          {activeTab === 'reimbursement' && (
+            <div className="space-y-6">
+              <h2 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                分月报销记录（按账单刷新日）
+              </h2>
+              <ReimbursementView refreshKey={refreshKey} daily={daily} />
             </div>
           )}
 

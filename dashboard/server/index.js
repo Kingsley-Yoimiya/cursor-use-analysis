@@ -176,10 +176,33 @@ function calendarMonthRange(key) {
   };
 }
 
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+/** 本地日历 YYYY-MM-DD，避免 toISOString() 在 UTC+8 下少 1～2 天 */
+function formatLocalDate(y, m, d) {
+  return `${y}-${pad2(m)}-${pad2(d)}`;
+}
+
+function addCalendarMonths(y, m, delta) {
+  let nm = m + delta;
+  let ny = y;
+  while (nm > 12) {
+    nm -= 12;
+    ny += 1;
+  }
+  while (nm < 1) {
+    nm += 12;
+    ny -= 1;
+  }
+  return { y: ny, m: nm };
+}
+
 function billingCycleKeyFromDay(day, cycleDay) {
   const [y, m, d] = day.split('-').map(Number);
   if (d >= cycleDay) {
-    return `${y}-${String(m).padStart(2, '0')}-${String(cycleDay).padStart(2, '0')}`;
+    return `${y}-${pad2(m)}-${pad2(cycleDay)}`;
   }
   let year = y;
   let month = m - 1;
@@ -187,17 +210,27 @@ function billingCycleKeyFromDay(day, cycleDay) {
     month = 12;
     year -= 1;
   }
-  return `${year}-${String(month).padStart(2, '0')}-${String(cycleDay).padStart(2, '0')}`;
+  return `${year}-${pad2(month)}-${pad2(cycleDay)}`;
 }
 
+/**
+ * 账单周期：从本月刷新日 00:00 至次月同日刷新前一刻。
+ * - startDate / endDate：展示用，endDate 为「下次刷新日」（如 5.23 ~ 6.23）
+ * - dataEndDate：该周期最后一条用量记录的日历日（次月刷新日的前一天）
+ */
 function billingCycleRange(cycleKey) {
   const [y, m, d] = cycleKey.split('-').map(Number);
-  const startDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  const end = new Date(y, m - 1, d);
-  end.setMonth(end.getMonth() + 1);
-  end.setDate(end.getDate() - 1);
-  const endDate = end.toISOString().slice(0, 10);
-  return { startDate, endDate };
+  const startDate = formatLocalDate(y, m, d);
+  const next = addCalendarMonths(y, m, 1);
+  const endDate = formatLocalDate(next.y, next.m, d);
+  const last = new Date(next.y, next.m - 1, d);
+  last.setDate(last.getDate() - 1);
+  const dataEndDate = formatLocalDate(
+    last.getFullYear(),
+    last.getMonth() + 1,
+    last.getDate(),
+  );
+  return { startDate, endDate, dataEndDate };
 }
 
 function billingCycleLabel(cycleKey) {
@@ -263,6 +296,7 @@ function finalizePeriodList(periodMap, kind, billingCycleDay) {
       label,
       startDate: range.startDate,
       endDate: range.endDate,
+      dataEndDate: range.dataEndDate ?? range.endDate,
       totalTokens: agg.totalTokens,
       totalCost: agg.totalCost,
       totalRows: agg.totalRows,
@@ -391,10 +425,29 @@ function dayKeyFromDateCell(dateStr) {
   }
 }
 
+const EXPORT_EXTRA_HEADERS = [
+  'Day',
+  'Estimated USD',
+  'Pool',
+  'Resolved Model',
+  'Billing Cycle',
+];
+
+function escapeCsvCell(v) {
+  const s = v == null ? '' : String(v);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function formatUsdForCsv(n) {
+  return (Math.round(Number(n) * 1e6) / 1e6).toFixed(6);
+}
+
 // ──────────── Express ────────────
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
 app.get('/api/summary', async (_req, res) => {
   const t0 = Date.now();
@@ -626,11 +679,188 @@ app.get('/api/period-stats', async (req, res) => {
   });
 });
 
+function defaultReimbursementProfile() {
+  return (
+    dashboardSettings.reimbursementProfile ?? {
+      employeeName: '',
+      employeeEmail: '',
+      department: '',
+      purpose: 'Cursor AI 开发工具订阅用量',
+      currency: 'USD',
+    }
+  );
+}
+
+function saveDashboardSettings() {
+  fs.writeFileSync(
+    DASHBOARD_SETTINGS_PATH,
+    `${JSON.stringify(dashboardSettings, null, 2)}\n`,
+    'utf8',
+  );
+}
+
+app.get('/api/reimbursement-profile', (_req, res) => {
+  let generatedAt = null;
+  try {
+    if (fs.existsSync(ESTIMATE_JSON)) {
+      const est = JSON.parse(fs.readFileSync(ESTIMATE_JSON, 'utf8'));
+      generatedAt = est.generatedAt ?? null;
+    }
+  } catch {
+    /* ignore */
+  }
+  return res.json({
+    ok: true,
+    profile: defaultReimbursementProfile(),
+    defaultBillingCycleDay: dashboardSettings.defaultBillingCycleDay ?? 23,
+    billingCycleDayRange: {
+      min: dashboardSettings.billingCycleDayMin ?? 1,
+      max: dashboardSettings.billingCycleDayMax ?? 28,
+    },
+    generatedAt,
+    disclaimer:
+      '以下金额为按公开 API 单价估算的等效价值（estimatedUsd），不等同于 Cursor 实际发票金额，仅供内部报销参考。',
+  });
+});
+
+app.get('/api/export/usage-with-cost.csv', async (req, res) => {
+  const t0 = Date.now();
+  if (!fs.existsSync(USAGE_CSV)) {
+    return res.status(404).json({
+      ok: false,
+      error: '找不到 usage CSV',
+      path: USAGE_CSV,
+    });
+  }
+
+  const minDay = dashboardSettings.billingCycleDayMin ?? 1;
+  const maxDay = dashboardSettings.billingCycleDayMax ?? 28;
+  let billingCycleDay = Number(req.query.billingCycleDay);
+  if (!Number.isFinite(billingCycleDay)) {
+    billingCycleDay = dashboardSettings.defaultBillingCycleDay ?? 23;
+  }
+  billingCycleDay = Math.min(maxDay, Math.max(minDay, Math.round(billingCycleDay)));
+
+  const periodKey = req.query.periodKey
+    ? String(req.query.periodKey).trim()
+    : null;
+  const startDate = req.query.startDate
+    ? String(req.query.startDate).trim()
+    : null;
+  const endDate = req.query.endDate ? String(req.query.endDate).trim() : null;
+
+  /** @type {string[] | null} */
+  let headerKeys = null;
+  const bodyLines = [];
+
+  try {
+    await new Promise((resolve, reject) => {
+      const stream = createReadStream(USAGE_CSV, { encoding: 'utf8' });
+      stream.on('error', reject);
+      stream
+        .pipe(csv())
+        .on('data', (row) => {
+          if (!headerKeys) headerKeys = Object.keys(row);
+          const parsed = processUsageRow(row);
+          if (!parsed) return;
+
+          const cycleKey = billingCycleKeyFromDay(parsed.day, billingCycleDay);
+          if (periodKey && cycleKey !== periodKey) return;
+          if (startDate && parsed.day < startDate) return;
+          if (endDate && parsed.day > endDate) return;
+
+          const cycleLabel = billingCycleLabel(cycleKey);
+          const origCells = headerKeys.map((h) => escapeCsvCell(row[h]));
+          const extraCells = [
+            parsed.day,
+            formatUsdForCsv(parsed.estimatedUsd),
+            parsed.pool,
+            parsed.modelKey,
+            cycleLabel,
+          ].map(escapeCsvCell);
+          bodyLines.push([...origCells, ...extraCells].join(','));
+        })
+        .on('end', resolve)
+        .on('error', reject);
+    });
+  } catch (e) {
+    const ms = Date.now() - t0;
+    console.error(`[api/export/usage-with-cost.csv] 失败 ${e?.message} ${ms}ms`);
+    return res.status(500).json({
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+      ms,
+    });
+  }
+
+  if (!headerKeys || headerKeys.length === 0) {
+    return res.status(500).json({ ok: false, error: 'CSV 表头为空' });
+  }
+
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  let filename = `cursor-usage-with-cost-${stamp}.csv`;
+  if (periodKey) {
+    filename = `cursor-usage-with-cost-${periodKey}.csv`;
+  }
+
+  const headerLine = [...headerKeys, ...EXPORT_EXTRA_HEADERS]
+    .map(escapeCsvCell)
+    .join(',');
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${filename}"`,
+  );
+  res.write('\uFEFF');
+  res.write(`${headerLine}\n`);
+  for (const line of bodyLines) {
+    res.write(`${line}\n`);
+  }
+  res.end();
+
+  const ms = Date.now() - t0;
+  console.log(
+    `[api/export/usage-with-cost.csv] 200 rows=${bodyLines.length} period=${periodKey ?? 'all'} ${ms}ms`,
+  );
+});
+
+app.put('/api/reimbursement-profile', (req, res) => {
+  const body = req.body ?? {};
+  const prev = defaultReimbursementProfile();
+  dashboardSettings.reimbursementProfile = {
+    employeeName: String(body.employeeName ?? prev.employeeName ?? '').trim(),
+    employeeEmail: String(body.employeeEmail ?? prev.employeeEmail ?? '').trim(),
+    department: String(body.department ?? prev.department ?? '').trim(),
+    purpose: String(body.purpose ?? prev.purpose ?? '').trim(),
+    currency: String(body.currency ?? prev.currency ?? 'USD').trim() || 'USD',
+  };
+  try {
+    saveDashboardSettings();
+    console.log(
+      `[api/reimbursement-profile] 已保存 employee=${dashboardSettings.reimbursementProfile.employeeName || '(空)'}`,
+    );
+    return res.json({ ok: true, profile: dashboardSettings.reimbursementProfile });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     repoRoot: REPO_ROOT,
-    features: ['summary', 'daily', 'period-stats', 'refresh'],
+    features: [
+      'summary',
+      'daily',
+      'period-stats',
+      'reimbursement-profile',
+      'export-usage-with-cost-csv',
+      'refresh',
+    ],
   });
 });
 
