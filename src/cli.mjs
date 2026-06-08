@@ -27,6 +27,18 @@ const DEFAULT_CHROME_CDP_PROFILE = resolve(process.cwd(), 'data', 'chrome-cdp-pr
 const BASE = 'https://cursor.com';
 const CURSOR_API = 'https://api.cursor.com';
 
+/** Playwright 不读取 HTTP_PROXY；浏览器走系统代理时需在环境变量或此处显式配置 */
+function playwrightProxyFromEnv() {
+  const raw =
+    process.env.PLAYWRIGHT_PROXY ||
+    process.env.HTTPS_PROXY ||
+    process.env.https_proxy ||
+    process.env.HTTP_PROXY ||
+    process.env.http_proxy;
+  const server = raw?.trim();
+  return server ? { server } : undefined;
+}
+
 function usage() {
   console.log(`
 用法:
@@ -64,6 +76,11 @@ login 选项（减轻 Cloudflare 误判；人机仍需你在窗口里手动完�
   • GCM DEPRECATED_ENDPOINT、GoogleUpdater：Chrome 自身日志，一般无关。
   • 新配置档首访 cursor.com 较慢：冷启动 + TLS + 资源多，属常见。
   • 已自动登录：该 user-data-dir 里若已有 Cookie / 谷歌账号会话，会直接进控制台，正常。
+
+代理（浏览器能开 dashboard 但 npm export 超时）:
+  Playwright 默认不走 macOS 系统代理。可设置:
+  export PLAYWRIGHT_PROXY=http://127.0.0.1:7897
+  或 HTTPS_PROXY（同上）。端口以本机 Clash/Surge 为准。
 
 鉴权说明:
   User API Keys（Integrations）→ Cloud Agents，不能拉用量。
@@ -199,6 +216,7 @@ async function cmdLogin(authPath, parsed) {
   }
 
   const slow = Number(process.env.PLAYWRIGHT_SLOW_MO_MS);
+  const proxy = playwrightProxyFromEnv();
   const context = await chromium.launchPersistentContext(profileDir, {
     headless: false,
     channel: parsed.chrome ? 'chrome' : undefined,
@@ -206,6 +224,7 @@ async function cmdLogin(authPath, parsed) {
     slowMo: Number.isFinite(slow) && slow > 0 ? slow : undefined,
     args: ['--disable-blink-features=AutomationControlled'],
     ignoreDefaultArgs: ['--enable-automation'],
+    ...(proxy ? { proxy } : {}),
   });
 
   try {
@@ -226,7 +245,11 @@ async function cmdLogin(authPath, parsed) {
 }
 
 async function downloadViaApi(authPath, url, outPath) {
-  const ctx = await request.newContext({ storageState: authPath });
+  const proxy = playwrightProxyFromEnv();
+  const ctx = await request.newContext({
+    storageState: authPath,
+    ...(proxy ? { proxy } : {}),
+  });
   try {
     const res = await ctx.get(url, { timeout: 120_000 });
     const text = await res.text();
@@ -255,12 +278,14 @@ async function downloadViaApi(authPath, url, outPath) {
 
 async function downloadViaBrowser(authPath, url, outPath, opts = {}) {
   const slow = Number(process.env.PLAYWRIGHT_SLOW_MO_MS);
+  const proxy = playwrightProxyFromEnv();
   const browser = await chromium.launch({
     headless: false,
     channel: opts.useChrome ? 'chrome' : undefined,
     slowMo: Number.isFinite(slow) && slow > 0 ? slow : undefined,
     args: ['--disable-blink-features=AutomationControlled'],
     ignoreDefaultArgs: ['--enable-automation'],
+    ...(proxy ? { proxy } : {}),
   });
   const context = await browser.newContext({
     storageState: authPath,

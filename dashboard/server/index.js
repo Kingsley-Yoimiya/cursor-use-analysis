@@ -4,10 +4,11 @@ import fs, { createReadStream } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import csv from 'csv-parser';
-import { exec } from 'child_process';
-import util from 'util';
-
-const execPromise = util.promisify(exec);
+import {
+  ensureProxyEnv,
+  getDataStatus,
+  syncFromCursor,
+} from './sync.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,18 +26,28 @@ const DASHBOARD_SETTINGS_PATH = path.join(
 const PORT = Number(process.env.PORT) || 3001;
 const bootT0 = Date.now();
 
+if (ensureProxyEnv()) {
+  console.log(
+    `[boot] 已配置出站代理: ${process.env.HTTPS_PROXY || process.env.PLAYWRIGHT_PROXY}`,
+  );
+}
+
 // ──────────── 加载费率配置 ────────────
 
 let ratesConfig = null;
-try {
-  const raw = fs.readFileSync(MODEL_RATES_PATH, 'utf8');
-  ratesConfig = JSON.parse(raw);
-  console.log(
-    `[boot] 已加载 model-rates.json，模型数量: ${Object.keys(ratesConfig.models).length}`,
-  );
-} catch (e) {
-  console.warn(`[boot] 警告：无法加载 model-rates.json: ${e?.message}`);
+function reloadRatesConfig() {
+  try {
+    const raw = fs.readFileSync(MODEL_RATES_PATH, 'utf8');
+    ratesConfig = JSON.parse(raw);
+    console.log(
+      `[rates] 已加载 model-rates.json，模型数量: ${Object.keys(ratesConfig.models).length}`,
+    );
+  } catch (e) {
+    console.warn(`[boot] 警告：无法加载 model-rates.json: ${e?.message}`);
+  }
 }
+
+reloadRatesConfig();
 
 let dashboardSettings = { defaultBillingCycleDay: 23 };
 try {
@@ -859,36 +870,59 @@ app.get('/api/health', (_req, res) => {
       'period-stats',
       'reimbursement-profile',
       'export-usage-with-cost-csv',
+      'data-status',
+      'reload',
+      'sync',
       'refresh',
     ],
   });
 });
 
-app.post('/api/refresh', async (req, res) => {
-  const t0 = Date.now();
-  console.log('[api/refresh] 开始拉取最新数据...');
-  try {
-    // 运行拉取数据命令
-    await execPromise('npm run export', { cwd: REPO_ROOT });
-    // 运行生成报告命令
-    await execPromise('npm run estimate-cost', { cwd: REPO_ROOT });
-    
-    // 重新加载 ratesConfig (如果需要)
-    try {
-      const raw = fs.readFileSync(MODEL_RATES_PATH, 'utf8');
-      ratesConfig = JSON.parse(raw);
-    } catch (e) {
-      console.warn(`[api/refresh] 重新加载 model-rates.json 失败: ${e?.message}`);
-    }
+function dataStatusPayload() {
+  return getDataStatus(REPO_ROOT, {
+    usageCsv: USAGE_CSV,
+    estimateJson: ESTIMATE_JSON,
+    modelRatesPath: MODEL_RATES_PATH,
+  });
+}
 
-    const ms = Date.now() - t0;
-    console.log(`[api/refresh] 200 ok 刷新成功 ${ms}ms`);
-    res.json({ ok: true, ms });
-  } catch (e) {
-    const ms = Date.now() - t0;
-    console.error(`[api/refresh] 刷新失败: ${e?.message} ${ms}ms`);
-    res.status(500).json({ ok: false, error: e?.message || String(e), ms });
+app.get('/api/data-status', (_req, res) => {
+  res.json(dataStatusPayload());
+});
+
+app.post('/api/reload', (_req, res) => {
+  reloadRatesConfig();
+  res.json({ ok: true, ...dataStatusPayload() });
+});
+
+app.post('/api/sync', async (_req, res) => {
+  const t0 = Date.now();
+  console.log('[api/sync] 开始从 Cursor 拉取…');
+  const result = await syncFromCursor(REPO_ROOT, { reloadRates: reloadRatesConfig });
+  if (result.ok) {
+    console.log(`[api/sync] 200 ok ${result.ms}ms`);
+    return res.json(result);
   }
+  console.error(`[api/sync] 失败 ${result.ms}ms: ${result.error}`);
+  return res.status(result.partial ? 207 : 500).json(result);
+});
+
+/** @deprecated 兼容旧前端；等价于 POST /api/sync */
+app.post('/api/refresh', async (_req, res) => {
+  console.log('[api/refresh] 开始拉取最新数据...');
+  const result = await syncFromCursor(REPO_ROOT, { reloadRates: reloadRatesConfig });
+  if (result.ok) {
+    console.log(`[api/refresh] 200 ok 刷新成功 ${result.ms}ms`);
+    return res.json({ ok: true, ms: result.ms, steps: result.steps });
+  }
+  const ms = result.ms ?? 0;
+  console.error(`[api/refresh] 刷新失败: ${result.error} ${result.ms}ms`);
+  return res.status(500).json({
+    ok: false,
+    error: result.hint || result.error || String(result.error),
+    ms: result.ms,
+    hint: result.hint,
+  });
 });
 
 app.listen(PORT, () => {

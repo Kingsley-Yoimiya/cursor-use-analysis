@@ -4,6 +4,18 @@ set -euo pipefail
 
 DASHBOARD="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$DASHBOARD/.." && pwd)"
+
+# Node/Playwright 不读 macOS 系统代理；刷新用量时需与浏览器一致
+if [[ -z "${PLAYWRIGHT_PROXY:-}" && -z "${HTTPS_PROXY:-}" ]]; then
+  if scutil --proxy 2>/dev/null | grep -q 'HTTPEnable : 1'; then
+    _port="$(scutil --proxy 2>/dev/null | awk '/HTTPPort/{print $3; exit}')"
+    if [[ -n "${_port}" ]]; then
+      export HTTPS_PROXY="http://127.0.0.1:${_port}"
+      export HTTP_PROXY="$HTTPS_PROXY"
+    fi
+  fi
+fi
+
 TS="$(date +%Y%m%d-%H%M%S)"
 LOGDIR="$DASHBOARD/logs/run-$TS"
 mkdir -p "$LOGDIR"
