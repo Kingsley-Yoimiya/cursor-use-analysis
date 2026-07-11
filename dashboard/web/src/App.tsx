@@ -19,7 +19,7 @@ import { DataSyncBar } from './components/DataSyncBar'
 
 interface PoolValues {
   Auto: number
-  Composer: number
+  FirstParty: number
   API: number
 }
 

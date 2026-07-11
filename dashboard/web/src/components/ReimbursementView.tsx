@@ -30,7 +30,7 @@ interface ModelStat {
 
 interface PoolValues {
   Auto: number
-  Composer: number
+  FirstParty: number
   API: number
 }
 
@@ -84,11 +84,16 @@ interface ProfileResponse {
 const BILLING_DAY_STORAGE_KEY = 'cursor-dashboard-billing-cycle-day'
 const PROFILE_STORAGE_KEY = 'cursor-dashboard-reimbursement-profile'
 
-const POOLS = ['Auto', 'Composer', 'API'] as const
+const POOLS = ['Auto', 'FirstParty', 'API'] as const
 const POOL_COLORS: Record<(typeof POOLS)[number], string> = {
   Auto: '#d97706',
-  Composer: '#7c3aed',
+  FirstParty: '#7c3aed',
   API: '#0891b2',
+}
+const POOL_LABELS: Record<(typeof POOLS)[number], string> = {
+  Auto: 'Auto',
+  FirstParty: 'First-party',
+  API: 'API',
 }
 
 // ────────── 格式化 ──────────
@@ -115,7 +120,7 @@ function fmtPct(n: number): string {
 function poolSharesFallback(byPool: PoolValues, total: number): PoolValues {
   return {
     Auto: total > 0 ? byPool.Auto / total : 0,
-    Composer: total > 0 ? byPool.Composer / total : 0,
+    FirstParty: total > 0 ? byPool.FirstParty / total : 0,
     API: total > 0 ? byPool.API / total : 0,
   }
 }
@@ -260,7 +265,7 @@ function ReimbursementMonthCard({
       {/* 池子分布 */}
       <section className="mb-4">
         <p className="text-[10px] uppercase tracking-wider text-slate-400 mb-2">
-          花费分类（Auto / Composer / API）
+          花费分类（Auto / First-party / API）
         </p>
         <div className="grid grid-cols-3 gap-2">
           {POOLS.map((pool) => (
@@ -269,7 +274,7 @@ function ReimbursementMonthCard({
               className="rounded-lg border px-3 py-2"
               style={{ borderLeftWidth: 3, borderLeftColor: POOL_COLORS[pool] }}
             >
-              <p className="text-xs font-semibold text-slate-700">{pool}</p>
+              <p className="text-xs font-semibold text-slate-700">{POOL_LABELS[pool]}</p>
               <p className="font-mono text-sm text-emerald-700 font-bold mt-0.5">
                 {fmtUsd(period.costByPool[pool])}
               </p>

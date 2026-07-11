@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * 按 Cursor 公开计费规则估算每条用量行的「等价 API 美元」。
+ * 按 Cursor 公开计费规则估算每条用量行的「等价美元」。
  *
  * 输入：官网导出的 usage CSV（token 分列 + Model + Max Mode）。
  * 费率：config/model-rates.json（需与官方 https://cursor.com/docs/models-and-pricing 对齐）。
  *
  * 限制：
- * - 不显式建模「Auto + Composer 池」与「API 池」的包月抵扣；Out-of-pool 仍以同表单价估算。
+ * - 不显式建模 First-party / API 池的包月抵扣；Out-of-pool 仍以同表单价估算。
  * - 长上下文 2x：默认对「输入侧三类 token 的费用」整体乘以倍数（见配置说明）。
- * - Teams 的 Cursor Token Rate 可选 --teams 粗略叠加（Auto 名称行豁免）。
+ * - Teams 的 Cursor Token Rate 可选 --teams 粗略叠加（Auto 与 billingPool=firstParty 豁免）。
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -67,7 +67,7 @@ function usage() {
   console.log(`用法:
   node scripts/estimate-cost.mjs --in <usage.csv> [--out report.json] [--rates config/model-rates.json] [--teams]
 
-  --teams   按 Teams 规则粗略加上 Cursor Token Rate（$0.25/M），名称中含 auto 的行不叠加。
+  --teams   按 Teams 规则粗略加上 Cursor Token Rate（$0.25/M）；Auto 与 First-party（Composer / Grok 4.5）豁免。
 `);
 }
 
@@ -101,6 +101,25 @@ function resolveRateForModel(modelRaw, ratesConfig) {
     return { kind: 'model', rate: modelRate, resolvedKey: canonical };
   }
   return { kind: 'unknown', rate: null, resolvedKey: key };
+}
+
+/**
+ * @returns {'Auto'|'FirstParty'|'API'}
+ */
+function classifyPool(kind, resolvedKey, rate) {
+  if (kind === 'auto') return 'Auto';
+  if (rate?.billingPool === 'firstParty') return 'FirstParty';
+  if (resolvedKey.includes('composer') || resolvedKey.startsWith('grok-4.5')) {
+    return 'FirstParty';
+  }
+  return 'API';
+}
+
+/** Auto 与 First-party 模型豁免 Teams Cursor Token Rate */
+function isTeamsCtrExempt(kind, rate) {
+  if (kind === 'auto') return true;
+  if (rate?.billingPool === 'firstParty') return true;
+  return false;
 }
 
 /**
@@ -189,6 +208,7 @@ async function main() {
 
   const rows = [];
   const byModel = {};
+  const byPool = { Auto: 0, FirstParty: 0, API: 0 };
 
   let unknownModelCount = 0;
   for (let li = 1; li < lines.length; li++) {
@@ -209,6 +229,7 @@ async function main() {
         line: li + 1,
         model: modelRaw,
         resolvedKey,
+        pool: 'API',
         error: 'unknown_model',
         costColumn: get(idxCost),
         kindColumn: get(idxKind),
@@ -223,8 +244,9 @@ async function main() {
       output: num(get(idxOut)),
     };
 
+    const pool = classifyPool(rateKind, resolvedKey, rate);
     const teamsRate =
-      raw.teams && !String(modelRaw).toLowerCase().includes('auto')
+      raw.teams && !isTeamsCtrExempt(rateKind, rate)
         ? ratesConfig.teamsCursorTokenRatePerMillion
         : null;
 
@@ -236,6 +258,7 @@ async function main() {
       model: modelRaw,
       resolvedRateKey: resolvedKey,
       rateSource: rateKind,
+      pool,
       maxMode: get(idxMax),
       kindColumn: get(idxKind),
       costColumn: get(idxCost),
@@ -244,11 +267,13 @@ async function main() {
       ...est,
     };
     rows.push(rec);
+    byPool[pool] += est.estimatedUsd;
 
     const aggKey = resolvedKey || modelRaw;
     if (!byModel[aggKey]) {
       byModel[aggKey] = {
         model: aggKey,
+        pool,
         requests: 0,
         estimatedUsd: 0,
         tokens: {
@@ -279,11 +304,12 @@ async function main() {
     ratesFile: ratesPath,
     teamsSurchargeApplied: Boolean(raw.teams),
     disclaimer:
-      'estimatedUsd 为按公开文档单价估算的 API 等价费用，不等同于发票金额；Included 套餐内额度未建模抵扣。',
+      'estimatedUsd 为按公开文档单价估算的等价费用，不等同于发票金额；Included 套餐内额度未建模抵扣。Grok 4.5 / Composer 计入 First-party 池，非 API。',
     totals: {
       rows: rows.length,
       unknownModelRows: unknownModelCount,
       totalEstimatedUsd,
+      estimatedUsdByPool: byPool,
     },
     byModel: Object.values(byModel).sort((a, b) => b.estimatedUsd - a.estimatedUsd),
     rows,

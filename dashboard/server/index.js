@@ -108,12 +108,17 @@ function estimateTokensUsd(t, rate) {
 }
 
 /**
- * 根据解析结果判断池类型：Auto / Composer / API
- * @returns {'Auto'|'Composer'|'API'}
+ * 根据解析结果判断池类型：Auto / FirstParty / API
+ * FirstParty = 官方 First-party models pool 中的非 Auto 用量（Composer、Grok 4.5 等）
+ * @returns {'Auto'|'FirstParty'|'API'}
  */
-function classifyPool(kind, resolvedKey) {
+function classifyPool(kind, resolvedKey, rate) {
   if (kind === 'auto') return 'Auto';
-  if (resolvedKey.includes('composer')) return 'Composer';
+  if (rate?.billingPool === 'firstParty') return 'FirstParty';
+  // 兼容未标 billingPool 的旧配置
+  if (resolvedKey.includes('composer') || resolvedKey.startsWith('grok-4.5')) {
+    return 'FirstParty';
+  }
   return 'API';
 }
 
@@ -135,8 +140,8 @@ function createEmptyPeriodAgg(key, label, startDate, endDate) {
     totalRows: 0,
     fastTokens: 0,
     fastRows: 0,
-    costByPool: { Auto: 0, Composer: 0, API: 0 },
-    tokensByPool: { Auto: 0, Composer: 0, API: 0 },
+    costByPool: { Auto: 0, FirstParty: 0, API: 0 },
+    tokensByPool: { Auto: 0, FirstParty: 0, API: 0 },
     /** @type {Map<string, { model: string, requests: number, tokens: number, cost: number }>} */
     byModel: new Map(),
   };
@@ -254,7 +259,7 @@ function pctChange(current, previous) {
   return (current - previous) / previous;
 }
 
-const POOLS = ['Auto', 'Composer', 'API'];
+const POOLS = ['Auto', 'FirstParty', 'API'];
 
 function poolShares(costByPool, tokensByPool, totalCost, totalTokens) {
   /** @type {Record<string, number>} */
@@ -393,7 +398,7 @@ function processUsageRow(row) {
     );
   }
 
-  const pool = classifyPool(kind, resolvedKey);
+  const pool = classifyPool(kind, resolvedKey, rate);
   const rowTokens =
     cacheRead + inputCacheWrite + inputNoCache + outputTokens;
   const modelKey =
@@ -508,8 +513,8 @@ app.get('/api/daily', async (_req, res) => {
    *   inputNoCache: number
    *   outputTokens: number
    *   cost: number
-   *   costByPool: { Auto: number; Composer: number; API: number }
-   *   tokensByPool: { Auto: number; Composer: number; API: number }
+   *   costByPool: { Auto: number; FirstParty: number; API: number }
+   *   tokensByPool: { Auto: number; FirstParty: number; API: number }
    *   costByModel: Record<string, number>
    *   tokensByModel: Record<string, number>
    *   rows: number
@@ -550,8 +555,8 @@ app.get('/api/daily', async (_req, res) => {
               inputNoCache: 0,
               outputTokens: 0,
               cost: 0,
-              costByPool: { Auto: 0, Composer: 0, API: 0 },
-              tokensByPool: { Auto: 0, Composer: 0, API: 0 },
+              costByPool: { Auto: 0, FirstParty: 0, API: 0 },
+              tokensByPool: { Auto: 0, FirstParty: 0, API: 0 },
               costByModel: {},
               tokensByModel: {},
               rows: 0,

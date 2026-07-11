@@ -172,7 +172,7 @@ CSV 中出现的 **`Model` 字符串** 通过 **`aliases`** 映射到公开档�
 本项目包含了一个功能完整的本地 React + Vite + Express 看板，用于可视化分析从 Cursor 导出的 API 用量和成本。
 
 - **快速启动**：运行 `./dashboard/start-dev.sh`，访问 `http://localhost:5173`。
-- **功能特色**：支持明暗主题切换、自定义日期筛选、每日用量趋势图、按 API/Composer/Auto 池子划分的堆叠图、全模型排行榜与 Cache Hit Rate。
+  - **功能特色**：支持明暗主题切换、自定义日期筛选、每日用量趋势图、按 API/First-party/Auto 池子划分的堆叠图、全模型排行榜与 Cache Hit Rate。
 - 更多详情请查看 [Dashboard README](./dashboard/README.md)。
 
 - 以 CSV 或 `reports/estimate.json` 的 **`byModel` / 按日期聚合** 驱动图表（趋势、堆叠、Max Mode 对比）。

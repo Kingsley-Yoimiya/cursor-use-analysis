@@ -30,7 +30,7 @@ interface ModelStat {
 
 interface PoolValues {
   Auto: number
-  Composer: number
+  FirstParty: number
   API: number
 }
 
@@ -89,11 +89,16 @@ interface PeriodStatsResponse {
 
 type ViewMode = 'calendar' | 'billing'
 
-const POOLS = ['Auto', 'Composer', 'API'] as const
+const POOLS = ['Auto', 'FirstParty', 'API'] as const
 const POOL_COLORS: Record<(typeof POOLS)[number], string> = {
   Auto: '#f59e0b',
-  Composer: '#8b5cf6',
+  FirstParty: '#8b5cf6',
   API: '#06b6d4',
+}
+const POOL_LABELS: Record<(typeof POOLS)[number], string> = {
+  Auto: 'Auto',
+  FirstParty: 'First-party',
+  API: 'API',
 }
 
 const PIE_OTHER_COLOR = { light: '#94a3b8', dark: '#475569' }
@@ -181,7 +186,7 @@ function poolSharesFallback(
 ): PoolValues {
   return {
     Auto: total > 0 ? byPool.Auto / total : 0,
-    Composer: total > 0 ? byPool.Composer / total : 0,
+    FirstParty: total > 0 ? byPool.FirstParty / total : 0,
     API: total > 0 ? byPool.API / total : 0,
   }
 }
@@ -428,7 +433,7 @@ function PoolBreakdown({ period }: { period: PeriodEntry }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-[10px] uppercase tracking-wider text-slate-400">池子分布 Auto / Composer / API</p>
+      <p className="text-[10px] uppercase tracking-wider text-slate-400">池子分布 Auto / First-party / API</p>
       <div className="grid grid-cols-3 gap-2 text-[11px]">
         {POOLS.map((pool) => (
           <div
@@ -436,7 +441,7 @@ function PoolBreakdown({ period }: { period: PeriodEntry }) {
             className="rounded-lg border border-slate-100 dark:border-slate-800 px-2 py-2"
             style={{ borderLeftWidth: 3, borderLeftColor: POOL_COLORS[pool] }}
           >
-            <p className="font-medium text-slate-600 dark:text-slate-300">{pool}</p>
+            <p className="font-medium text-slate-600 dark:text-slate-300">{POOL_LABELS[pool]}</p>
             <p className="font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
               {fmtUsd(period.costByPool[pool])}
             </p>
@@ -649,16 +654,16 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
       return {
         label: shortPeriodLabel(p, viewMode),
         costAuto: p.costByPool.Auto,
-        costComposer: p.costByPool.Composer,
+        costFirstParty: p.costByPool.FirstParty,
         costAPI: p.costByPool.API,
         tokensAuto: p.tokensByPool.Auto / 1_000_000,
-        tokensComposer: p.tokensByPool.Composer / 1_000_000,
+        tokensFirstParty: p.tokensByPool.FirstParty / 1_000_000,
         tokensAPI: p.tokensByPool.API / 1_000_000,
         shareAutoCost: costShare.Auto * 100,
-        shareComposerCost: costShare.Composer * 100,
+        shareFirstPartyCost: costShare.FirstParty * 100,
         shareAPICost: costShare.API * 100,
         shareAutoToken: tokenShare.Auto * 100,
-        shareComposerToken: tokenShare.Composer * 100,
+        shareFirstPartyToken: tokenShare.FirstParty * 100,
         shareAPIToken: tokenShare.API * 100,
       }
     })
@@ -887,7 +892,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
 
               <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
                 <h4 className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-4">
-                  Auto / Composer / API 池（Token）
+                  Auto / First-party / API 池（Token）
                 </h4>
                 <div className={compactChartShell(compactTrendLayout)}>
                   <ResponsiveContainer width="100%" height={bars.height}>
@@ -909,10 +914,10 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                         maxBarSize={bars.maxBarSize}
                       />
                       <Bar
-                        dataKey="tokensComposer"
-                        name="Composer"
+                        dataKey="tokensFirstParty"
+                        name="First-party"
                         stackId="pool-tokens"
-                        fill={POOL_COLORS.Composer}
+                        fill={POOL_COLORS.FirstParty}
                         maxBarSize={bars.maxBarSize}
                       />
                       <Bar
@@ -943,7 +948,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                 <th className="px-4 py-3 font-medium text-right">环比</th>
                 <th className="px-4 py-3 font-medium text-right">Token</th>
                 <th className="px-4 py-3 font-medium text-right">Auto%</th>
-                <th className="px-4 py-3 font-medium text-right">Composer%</th>
+                <th className="px-4 py-3 font-medium text-right">First-party%</th>
                 <th className="px-4 py-3 font-medium text-right">API%</th>
                 <th className="px-4 py-3 font-medium text-right">Fast%</th>
                 <th className="px-4 py-3 font-medium text-right">请求</th>
@@ -979,10 +984,10 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <span className="font-mono" style={{ color: POOL_COLORS.Composer }}>{fmtPct(costShare.Composer)}</span>
-                    {poolChanges?.Composer && (
-                      <p className={`text-[10px] font-mono ${changeColor(poolChanges.Composer.costShareDelta)}`}>
-                        {fmtShareDelta(poolChanges.Composer.costShareDelta)}
+                    <span className="font-mono" style={{ color: POOL_COLORS.FirstParty }}>{fmtPct(costShare.FirstParty)}</span>
+                    {poolChanges?.FirstParty && (
+                      <p className={`text-[10px] font-mono ${changeColor(poolChanges.FirstParty.costShareDelta)}`}>
+                        {fmtShareDelta(poolChanges.FirstParty.costShareDelta)}
                       </p>
                     )}
                   </td>

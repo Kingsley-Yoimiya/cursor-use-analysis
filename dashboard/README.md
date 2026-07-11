@@ -8,7 +8,7 @@
 - 📊 **核心 KPI 概览**：直观展示总等价金额 (USD)、总请求数、Token 总计以及缓存命中率。
 - 📅 **自定义日期筛选**：选择指定时间段，所有图表与数据联动更新。
 - 💰 **每日用量趋势图**：使用面积图直观展示每日等价 API 消耗金额的变化趋势。
-- 📈 **模型分类栈图**：将用量拆分为 `API`、`Composer` 和 `Auto` 三大池子，支持在 USD 金额和 Tokens 数量间切换。
+- 📈 **模型分类栈图**：将用量拆分为 `API`、`First-party`（含 Composer / Grok 4.5）和 `Auto` 三大池子，支持在 USD 金额和 Tokens 数量间切换。
 - 🤖 **分模型详情与趋势**：详细的每日模型用量堆叠图，看清算力分配。
 - 🏆 **全模型排行榜**：所有模型使用量排序，包含独特的 **Cache Hit Rate (缓存命中率)** 进度条展示。
 
@@ -66,4 +66,4 @@ npm run dev
 ## 数据流说明
 
 1. **`/api/summary`**：直接读取根目录的 `reports/estimate.json`，提供宏观统计和模型排行榜的基础数据。
-2. **`/api/daily`**：流式读取根目录的 `exports/usage.csv`，并结合 `config/model-rates.json` 的模型费率，实时计算每一行请求的真实等效 USD。按天和池子（Auto/Composer/API）进行聚合后返回给前端渲染图表。
+2. **`/api/daily`**：流式读取根目录的 `exports/usage.csv`，并结合 `config/model-rates.json` 的模型费率，实时计算每一行请求的真实等效 USD。按天和池子（Auto/First-party/API）进行聚合后返回给前端渲染图表。

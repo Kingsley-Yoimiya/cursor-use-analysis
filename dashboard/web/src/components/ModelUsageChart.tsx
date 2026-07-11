@@ -1,5 +1,5 @@
 /**
- * 每日消耗细分柱状图（按池类型：Auto / Composer / API）
+ * 每日消耗细分柱状图（按池类型：Auto / First-party / API）
  * 支持 USD 与 Tokens 两种视图切换
  */
 import { useState } from 'react'
@@ -19,7 +19,7 @@ import { useIsDark } from '../context/ThemeContext'
 
 interface PoolValues {
   Auto: number
-  Composer: number
+  FirstParty: number
   API: number
 }
 
@@ -36,11 +36,17 @@ type ViewMode = 'usd' | 'tokens'
 
 const POOL_COLORS: Record<keyof PoolValues, string> = {
   Auto: '#f59e0b',
-  Composer: '#8b5cf6',
+  FirstParty: '#8b5cf6',
   API: '#06b6d4',
 }
 
-const POOLS = ['Auto', 'Composer', 'API'] as const
+const POOLS = ['Auto', 'FirstParty', 'API'] as const
+
+const POOL_LABELS: Record<(typeof POOLS)[number], string> = {
+  Auto: 'Auto',
+  FirstParty: 'First-party',
+  API: 'API',
+}
 
 // ────────── 工具函数 ──────────
 
@@ -142,7 +148,7 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
   const chartData = daily.map((d) => ({
     date: fmtDate(d.date),
     Auto: mode === 'usd' ? (d.costByPool?.Auto ?? 0) : (d.tokensByPool?.Auto ?? 0),
-    Composer: mode === 'usd' ? (d.costByPool?.Composer ?? 0) : (d.tokensByPool?.Composer ?? 0),
+    FirstParty: mode === 'usd' ? (d.costByPool?.FirstParty ?? 0) : (d.tokensByPool?.FirstParty ?? 0),
     API: mode === 'usd' ? (d.costByPool?.API ?? 0) : (d.tokensByPool?.API ?? 0),
   }))
 
@@ -160,7 +166,7 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-5 shadow-sm dark:shadow-lg">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">
-          每日消耗细分（Auto / Composer / API）
+          每日消耗细分（Auto / First-party / API）
         </h3>
         <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 text-xs">
           <button
@@ -216,7 +222,7 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
             <Bar
               key={pool}
               dataKey={pool}
-              name={pool}
+              name={POOL_LABELS[pool]}
               stackId="a"
               fill={POOL_COLORS[pool]}
               radius={i === POOLS.length - 1 ? [3, 3, 0, 0] : undefined}
