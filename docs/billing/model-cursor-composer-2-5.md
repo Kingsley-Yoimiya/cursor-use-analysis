@@ -1,7 +1,7 @@
 ---
 fetchedAt: 2026-07-12T15:02:26.477Z
 sourceUrl: https://cursor.com/docs/models/cursor-composer-2-5
-title: Model: Cursor Composer 2
+title: Model: Cursor Composer 2.5
 httpStatus: 200
 contentType: text/plain; charset=utf-8
 ---

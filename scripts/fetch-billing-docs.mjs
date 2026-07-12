@@ -31,6 +31,16 @@ const TARGETS = [
     url: 'https://cursor.com/docs/models/cursor-composer-2',
     title: 'Model: Cursor Composer 2',
   },
+  {
+    file: 'model-cursor-composer-2-5.md',
+    url: 'https://cursor.com/docs/models/cursor-composer-2-5',
+    title: 'Model: Cursor Composer 2.5',
+  },
+  {
+    file: 'model-grok-4-5.md',
+    url: 'https://cursor.com/docs/models/grok-4-5',
+    title: 'Model: Grok 4.5',
+  },
 ];
 
 async function fetchText(url) {
