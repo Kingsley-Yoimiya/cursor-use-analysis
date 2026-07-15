@@ -162,8 +162,32 @@ CSV 中出现的 **`Model` 字符串** 通过 **`aliases`** 映射到公开档�
 | `npm run export-api` | Admin Key 拉 API |
 | `npm run fetch-billing` | 抓取计费文档到 `docs/billing/` |
 | `npm run estimate-cost` | 对 CSV 做分项计价估算 |
+| `npm run analyze-daily` | 日序列 / API·First-party 变化量与拟合摘要 |
+| `npm run analyze-portrait` | 行为画像统计与 SVG（日历、时钟、池占比等） |
 
 完整 CLI：`node src/cli.mjs --help`
+
+---
+
+## Canvas 行为画像分析（推荐分享用法）
+
+仓库内置 Agent Skill：**`.cursor/skills/cursor-usage-canvas-report/`**。在 Cursor 里让 Agent 读取该 skill 后，可基于你本地的 `exports/usage.csv` / `reports/estimate.json` 生成**聊天旁可打开的 Canvas 报告**（日历热力图、池子接力、会话推断、缓存杠杆、请求≠费用等）。
+
+```bash
+# 1) 先有用量与估算
+npm run export
+npm run estimate-cost -- --in ./exports/usage.csv --out ./reports/estimate.json
+
+# 2) 跑可复用统计脚本（需 python3 + numpy + matplotlib）
+python3 scripts/analysis/analyze_daily_usage.py
+python3 scripts/analysis/analyze_usage_portrait.py
+
+# 3) 在对话中：@cursor-usage-canvas-report 或说明「按 skill 做完整用量 Canvas 报告」
+```
+
+- 脚本与 skill **可提交**；`exports/*.csv`、`reports/estimate.json` 与个人 SVG/JSON **不要提交**（已在 `.gitignore`）。
+- 时间默认按 **UTC+8** 日历日；费用为公开单价**等效价值**，不是发票。
+- 详细口径与叙事顺序见 skill 内 [reference.md](./.cursor/skills/cursor-usage-canvas-report/reference.md)。
 
 ---
 

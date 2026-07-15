@@ -11,7 +11,9 @@
     "export-api": "node src/cli.mjs export-api",
     "chrome-cdp-cmd": "node src/cli.mjs chrome-cdp-cmd",
     "fetch-billing": "node scripts/fetch-billing-docs.mjs",
-    "estimate-cost": "node scripts/estimate-cost.mjs --in ./exports/usage.csv --out ./reports/estimate.json"
+    "estimate-cost": "node scripts/estimate-cost.mjs --in ./exports/usage.csv --out ./reports/estimate.json",
+    "analyze-daily": "python3 scripts/analysis/analyze_daily_usage.py",
+    "analyze-portrait": "python3 scripts/analysis/analyze_usage_portrait.py"
   },
   "engines": {
     "node": ">=18"
