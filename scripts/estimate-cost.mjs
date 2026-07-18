@@ -14,6 +14,11 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  classifyPool,
+  isTeamsCtrExempt,
+  resolveRateForModel,
+} from './lib/resolve-model-rate.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -75,51 +80,6 @@ function usage() {
 function num(s) {
   const n = Number(String(s).replace(/,/g, '').trim());
   return Number.isFinite(n) ? n : 0;
-}
-
-/**
- * @param {Record<string,string>} row
- * @param {any} ratesConfig
- */
-function resolveRateForModel(modelRaw, ratesConfig) {
-  const key = String(modelRaw || '')
-    .trim()
-    .toLowerCase();
-  if (!key) return { kind: 'unknown', rate: null, resolvedKey: '' };
-
-  if (key === 'auto' || ratesConfig.aliases[key] === 'auto') {
-    return { kind: 'auto', rate: ratesConfig.autoPool, resolvedKey: 'auto' };
-  }
-
-  const canonical = ratesConfig.aliases[key] || key;
-  if (canonical === 'auto') {
-    return { kind: 'auto', rate: ratesConfig.autoPool, resolvedKey: 'auto' };
-  }
-
-  const modelRate = ratesConfig.models[canonical];
-  if (modelRate) {
-    return { kind: 'model', rate: modelRate, resolvedKey: canonical };
-  }
-  return { kind: 'unknown', rate: null, resolvedKey: key };
-}
-
-/**
- * @returns {'Auto'|'FirstParty'|'API'}
- */
-function classifyPool(kind, resolvedKey, rate) {
-  if (kind === 'auto') return 'Auto';
-  if (rate?.billingPool === 'firstParty') return 'FirstParty';
-  if (resolvedKey.includes('composer') || resolvedKey.startsWith('grok-4.5')) {
-    return 'FirstParty';
-  }
-  return 'API';
-}
-
-/** Auto 与 First-party 模型豁免 Teams Cursor Token Rate */
-function isTeamsCtrExempt(kind, rate) {
-  if (kind === 'auto') return true;
-  if (rate?.billingPool === 'firstParty') return true;
-  return false;
 }
 
 /**

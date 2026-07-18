@@ -147,7 +147,7 @@ npm run estimate-cost -- --in ./exports/usage.csv --teams
 产出 JSON 含 **`byModel` 汇总** 与 **`rows` 逐行明细**（`estimatedUsd`、`inputMult` 等）。  
 **说明**：`Kind`/`Cost` 为 `Included` 时，脚本仍可估算「若按 API 单价计费」的美元，**不等于**当月发票；**未建模**包月池抵扣、Premium 具体选型细节、旧版「按请求计费」等。
 
-CSV 中出现的 **`Model` 字符串** 通过 **`aliases`** 映射到公开档位；新模型导出后若报 `unknown_model`，请在 **`config/model-rates.json`** 增补。
+CSV 中出现的 **`Model` 字符串** 先走 **`aliases`**，再按 effort / thinking / preview 等后缀启发式收拢到公开档位（见 `scripts/lib/resolve-model-rate.mjs`）。全新基座模型仍需在 **`config/model-rates.json`** 增补费率；裸名 `premium` 故意记为 `unknown_model`。
 
 ---
 

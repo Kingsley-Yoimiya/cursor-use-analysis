@@ -9,6 +9,10 @@ import {
   getDataStatus,
   syncFromCursor,
 } from './sync.js';
+import {
+  classifyPool,
+  resolveRateForModel as resolveRateForModelShared,
+} from '../../scripts/lib/resolve-model-rate.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,29 +64,10 @@ try {
   console.warn(`[boot] 警告：无法加载 dashboard-settings.json: ${e?.message}`);
 }
 
-// ──────────── 费率查找逻辑（参照 estimate-cost.mjs）────────────
+// ──────────── 费率查找逻辑（与 scripts/estimate-cost.mjs 共用）────────────
 
 function resolveRateForModel(modelRaw) {
-  if (!ratesConfig) return { kind: 'unknown', rate: null, resolvedKey: '' };
-  const key = String(modelRaw || '')
-    .trim()
-    .toLowerCase();
-  if (!key) return { kind: 'unknown', rate: null, resolvedKey: '' };
-
-  if (key === 'auto' || ratesConfig.aliases[key] === 'auto') {
-    return { kind: 'auto', rate: ratesConfig.autoPool, resolvedKey: 'auto' };
-  }
-
-  const canonical = ratesConfig.aliases[key] || key;
-  if (canonical === 'auto') {
-    return { kind: 'auto', rate: ratesConfig.autoPool, resolvedKey: 'auto' };
-  }
-
-  const modelRate = ratesConfig.models[canonical];
-  if (modelRate) {
-    return { kind: 'model', rate: modelRate, resolvedKey: canonical };
-  }
-  return { kind: 'unknown', rate: null, resolvedKey: key };
+  return resolveRateForModelShared(modelRaw, ratesConfig);
 }
 
 /**
@@ -105,21 +90,6 @@ function estimateTokensUsd(t, rate) {
     inputMult;
   const outputUsd = (t.output / 1e6) * rate.outputPerMillion;
   return inputUsd + outputUsd;
-}
-
-/**
- * 根据解析结果判断池类型：Auto / FirstParty / API
- * FirstParty = 官方 First-party models pool 中的非 Auto 用量（Composer、Grok 4.5 等）
- * @returns {'Auto'|'FirstParty'|'API'}
- */
-function classifyPool(kind, resolvedKey, rate) {
-  if (kind === 'auto') return 'Auto';
-  if (rate?.billingPool === 'firstParty') return 'FirstParty';
-  // 兼容未标 billingPool 的旧配置
-  if (resolvedKey.includes('composer') || resolvedKey.startsWith('grok-4.5')) {
-    return 'FirstParty';
-  }
-  return 'API';
 }
 
 function isFastModel(resolvedKey, modelRaw) {
