@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from 'react'
 import axios from 'axios'
+import { mergeSummaryByModel, type FoldModelEntry } from '../lib/mergeDaily'
 
 // ────────── 类型定义 ──────────
 
@@ -87,25 +88,67 @@ function KPICard({ label, value, sub, valueColor = 'text-slate-800 dark:text-sla
 
 // ────────── KPI 卡片区域主组件 ──────────
 
-export function KPICards({ refreshKey }: { refreshKey?: number }) {
+export function KPICards({
+  refreshKey,
+  foldPluginIds = [],
+}: {
+  refreshKey?: number
+  foldPluginIds?: string[]
+}) {
   const [data, setData] = useState<SummaryData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
-    axios
-      .get<SummaryResponse>('/api/summary')
-      .then((r) => {
-        if (r.data.ok && r.data.data) {
-          setData(r.data.data)
-        } else {
-          setError(r.data.error ?? '接口返回异常')
+    const load = async () => {
+      const r = await axios.get<SummaryResponse>('/api/summary')
+      if (!r.data.ok || !r.data.data) {
+        setError(r.data.error ?? '接口返回异常')
+        setData(null)
+        return
+      }
+      let next = r.data.data
+      if (foldPluginIds.length > 0) {
+        const extras = await Promise.all(
+          foldPluginIds.map((id) =>
+            axios
+              .get<{ ok: boolean; data?: SummaryData }>(
+                `/api/plugins/${id}/cursor-summary`,
+              )
+              .then((x) => (x.data.ok ? x.data.data : null))
+              .catch(() => null),
+          ),
+        )
+        let byModel = (next.byModel || []) as FoldModelEntry[]
+        let usd = next.totals?.totalEstimatedUsd ?? 0
+        let rows = next.totals?.rows ?? 0
+        let unknown = next.totals?.unknownModelRows ?? 0
+        for (const ex of extras) {
+          if (!ex) continue
+          byModel = mergeSummaryByModel(byModel, ex.byModel as FoldModelEntry[])
+          usd += ex.totals?.totalEstimatedUsd ?? 0
+          rows += ex.totals?.rows ?? 0
+          unknown += ex.totals?.unknownModelRows ?? 0
         }
-      })
+        next = {
+          ...next,
+          byModel: byModel as ModelEntry[],
+          totals: {
+            ...next.totals,
+            totalEstimatedUsd: usd,
+            rows,
+            unknownModelRows: unknown,
+          },
+        }
+      }
+      setData(next)
+      setError(null)
+    }
+    load()
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false))
-  }, [refreshKey])
+  }, [refreshKey, foldPluginIds.join('|')])
 
   if (loading) {
     return (

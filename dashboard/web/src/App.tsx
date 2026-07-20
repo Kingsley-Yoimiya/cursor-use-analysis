@@ -12,8 +12,16 @@ import { ModelDetailedChart } from './components/ModelDetailedChart'
 import { ModelLeaderboard } from './components/ModelLeaderboard'
 import { PeriodStatsView } from './components/PeriodStatsView'
 import { ReimbursementView } from './components/ReimbursementView'
+import { GenericSourceView } from './components/GenericSourceView'
+import {
+  MergeAddonToggle,
+  readMergeEnabled,
+  writeMergeEnabled,
+  type AddonSourceInfo,
+} from './components/MergeAddonToggle'
 import { ThemeContext } from './context/ThemeContext'
 import { DataSyncBar } from './components/DataSyncBar'
+import { mergeDailyEntries, type DailyEntry as MergeDailyEntry } from './lib/mergeDaily'
 
 // ────────── 类型定义 ──────────
 
@@ -45,7 +53,29 @@ interface DailyResponse {
   error?: string
 }
 
-type Tab = 'overview' | 'model-details' | 'period-stats' | 'reimbursement'
+type CoreTab = 'overview' | 'model-details' | 'period-stats' | 'reimbursement'
+type Tab = CoreTab | `plugin:${string}`
+
+interface PluginTabInfo {
+  id: string
+  label: string
+  order: number
+}
+
+interface HealthResponse {
+  ok?: boolean
+  plugins?: Array<
+    AddonSourceInfo & {
+      tabs?: PluginTabInfo[]
+    }
+  >
+}
+
+interface PluginCursorDailyResponse {
+  ok: boolean
+  data?: MergeDailyEntry[]
+  error?: string
+}
 
 // ────────── 主应用组件 ──────────
 
@@ -67,9 +97,13 @@ function App() {
 
   // ── 标签页 ──
   const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const [pluginTabs, setPluginTabs] = useState<PluginTabInfo[]>([])
+  const [addonSources, setAddonSources] = useState<AddonSourceInfo[]>([])
+  const [mergeEnabled, setMergeEnabled] = useState<boolean>(() => readMergeEnabled())
 
-  // ── 每日数据 ──
+  // ── 每日数据（daily 始终为纯 Cursor，供报销使用）──
   const [daily, setDaily] = useState<DailyEntry[] | null>(null)
+  const [pluginDailyExtra, setPluginDailyExtra] = useState<DailyEntry[] | null>(null)
   const [dailyError, setDailyError] = useState<string | null>(null)
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
@@ -81,6 +115,46 @@ function App() {
     setRefreshKey((k) => k + 1)
   }
 
+  const setMerge = (on: boolean) => {
+    writeMergeEnabled(on)
+    setMergeEnabled(on)
+  }
+
+  useEffect(() => {
+    axios
+      .get<HealthResponse>('/api/health')
+      .then((r) => {
+        const tabsFromPlugins: PluginTabInfo[] = []
+        const mergeable: AddonSourceInfo[] = []
+        for (const p of r.data.plugins ?? []) {
+          const contrib = p.tabs?.length
+            ? p.tabs
+            : [{ id: p.id, label: p.name || p.id, order: 100 }]
+          for (const t of contrib) {
+            tabsFromPlugins.push({
+              id: t.id || p.id,
+              label: t.label || p.name || p.id,
+              order: Number(t.order ?? 100),
+            })
+          }
+          if (p.mergeIntoOverview?.enabled) {
+            mergeable.push({
+              id: p.id,
+              name: p.name,
+              mergeIntoOverview: p.mergeIntoOverview,
+            })
+          }
+        }
+        tabsFromPlugins.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+        setPluginTabs(tabsFromPlugins)
+        setAddonSources(mergeable)
+      })
+      .catch(() => {
+        setPluginTabs([])
+        setAddonSources([])
+      })
+  }, [refreshKey])
+
   useEffect(() => {
     axios
       .get<DailyResponse>('/api/daily')
@@ -91,26 +165,68 @@ function App() {
       .catch((e) => setDailyError(e instanceof Error ? e.message : String(e)))
   }, [refreshKey])
 
+  useEffect(() => {
+    if (!mergeEnabled || addonSources.length === 0) {
+      setPluginDailyExtra(null)
+      return
+    }
+    let cancelled = false
+    Promise.all(
+      addonSources.map((p) =>
+        axios
+          .get<PluginCursorDailyResponse>(`/api/plugins/${p.id}/cursor-daily`)
+          .then((r) => (r.data.ok && Array.isArray(r.data.data) ? r.data.data : []))
+          .catch(() => [] as MergeDailyEntry[]),
+      ),
+    ).then((chunks) => {
+      if (cancelled) return
+      const merged = chunks.reduce<MergeDailyEntry[] | null>(
+        (acc, cur) => mergeDailyEntries(acc, cur),
+        null,
+      )
+      setPluginDailyExtra(merged)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [mergeEnabled, addonSources, refreshKey])
+
+  /** 概览 / 模型详情用：可选叠加本地附加源 */
+  const displayDaily = useMemo(
+    () =>
+      mergeEnabled
+        ? mergeDailyEntries(daily, pluginDailyExtra)
+        : daily,
+    [daily, pluginDailyExtra, mergeEnabled],
+  )
+
   const filteredDaily = useMemo<DailyEntry[] | null>(() => {
-    if (!daily) return null
-    if (!startDate && !endDate) return daily
-    return daily.filter((d) => {
+    if (!displayDaily) return null
+    if (!startDate && !endDate) return displayDaily
+    return displayDaily.filter((d) => {
       if (startDate && d.date < startDate) return false
       if (endDate && d.date > endDate) return false
       return true
     })
-  }, [daily, startDate, endDate])
+  }, [displayDaily, startDate, endDate])
 
   const dateRange = useMemo(() => {
-    if (!daily || daily.length === 0) return null
-    return { min: daily[0].date, max: daily[daily.length - 1].date }
-  }, [daily])
+    const src = displayDaily ?? daily
+    if (!src || src.length === 0) return null
+    return { min: src[0].date, max: src[src.length - 1].date }
+  }, [displayDaily, daily])
+
+  const mergeSourceIds = mergeEnabled ? addonSources.map((p) => p.id) : []
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: '概览 Overview' },
     { id: 'period-stats', label: '周期统计 Period Stats' },
     { id: 'reimbursement', label: '报销导出 Reimburse' },
     { id: 'model-details', label: '模型详情 Model Details' },
+    ...pluginTabs.map((t) => ({
+      id: `plugin:${t.id}` as Tab,
+      label: t.label,
+    })),
   ]
 
   return (
@@ -131,6 +247,12 @@ function App() {
                 YTD 2026
               </span>
               
+              <MergeAddonToggle
+                sources={addonSources}
+                enabled={mergeEnabled}
+                onChange={setMerge}
+                compact
+              />
               <DataSyncBar onReload={bumpRefresh} />
               {/* 明/暗主题切换按钮 */}
               <button
@@ -189,8 +311,13 @@ function App() {
           {/* ── 概览 Tab ── */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
+              {mergeEnabled && addonSources.length > 0 && (
+                <p className="text-[11px] text-emerald-600/90 dark:text-emerald-400/80">
+                  已合并本地附加用量到概览（按公开单价估算）；报销 Tab 仍为主数据源。
+                </p>
+              )}
               <section>
-                <KPICards refreshKey={refreshKey} />
+                <KPICards refreshKey={refreshKey} foldPluginIds={mergeSourceIds} />
               </section>
 
               {/* 日期范围筛选器 */}
@@ -233,7 +360,7 @@ function App() {
                 )}
                 <span className="ml-auto text-xs text-slate-400 dark:text-slate-600 font-mono">
                   {filteredDaily != null
-                    ? `${filteredDaily.length} 天`
+                    ? `${filteredDaily.length} 天${mergeEnabled ? ' · 含附加源' : ''}`
                     : daily
                     ? `${daily.length} 天`
                     : '加载中…'}
@@ -286,6 +413,11 @@ function App() {
               <h2 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">
                 模型详情分析
               </h2>
+              {mergeEnabled && addonSources.length > 0 && (
+                <p className="text-[11px] text-emerald-600/90 dark:text-emerald-400/80">
+                  已叠加本地附加源模型映射（报销不受影响）。
+                </p>
+              )}
               {dailyError ? (
                 <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-600 dark:text-red-400">
                   加载每日数据失败：{dailyError}（请确认已启动 dashboard/server）
@@ -293,14 +425,31 @@ function App() {
               ) : (
                 <ModelDetailedChart daily={filteredDaily} />
               )}
-              <ModelLeaderboard refreshKey={refreshKey} />
+              <ModelLeaderboard
+                refreshKey={refreshKey}
+                foldPluginIds={mergeSourceIds}
+              />
             </div>
+          )}
+
+          {/* ── 本地附加源 Tab ── */}
+          {activeTab.startsWith('plugin:') && (
+            <GenericSourceView
+              pluginId={activeTab.slice('plugin:'.length)}
+              refreshKey={refreshKey}
+              mergeEnabled={mergeEnabled}
+              onMergeChange={setMerge}
+              addonSources={addonSources}
+            />
           )}
 
           {/* 页脚 */}
           <footer className="border-t border-slate-200 dark:border-slate-800/60 pt-6 pb-2">
             <p className="text-center text-[11px] text-slate-400 dark:text-slate-700">
               数据仅供参考 · estimatedUsd 按公开文档单价计算，不等同于实际账单
+              {pluginTabs.length > 0
+                ? ' · 附加数据源与主用量默认分列，合并需显式打开开关'
+                : ''}
             </p>
           </footer>
         </main>

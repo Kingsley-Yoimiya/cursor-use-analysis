@@ -101,15 +101,26 @@ export function classifySyncError(text) {
     t.includes('etimedout') ||
     t.includes('timeout') ||
     t.includes('econnrefused') ||
-    t.includes('enotfound')
+    t.includes('enotfound') ||
+    t.includes('socket disconnected') ||
+    t.includes('tls connection') ||
+    t.includes('network socket') ||
+    t.includes('econnreset') ||
+    t.includes('cert')
   ) {
-    return '无法连接 cursor.com，多为未走代理。请确认 Clash/Surge 已开启，或在终端设置 HTTPS_PROXY=http://127.0.0.1:7897 后重启 dashboard。';
+    return '无法连接 cursor.com，多为未走代理或 TLS 中断。请确认 Clash/Surge 已开启，或在终端设置 HTTPS_PROXY=http://127.0.0.1:7897 后重启 dashboard。';
   }
-  if (t.includes('html') || t.includes('未登录') || t.includes('login')) {
-    return 'Cursor 登录已失效。请在项目根目录执行 npm run login -- --chrome 重新保存会话。';
-  }
-  if (t.includes('找不到会话') || t.includes('auth.json')) {
+  // 勿用 auth.json / login 子串：export 成功路径也会打印「会话文件: .../auth.json」和「请先运行: npm run login」
+  if (t.includes('找不到会话文件')) {
     return '缺少 data/auth.json。请先 npm run login 完成浏览器登录。';
+  }
+  if (
+    t.includes('响应为 html') ||
+    t.includes('未登录') ||
+    t.includes('跳转登录页') ||
+    t.includes('登录已失效')
+  ) {
+    return 'Cursor 登录已失效。请在项目根目录执行 npm run login -- --chrome 重新保存会话。';
   }
   return '同步失败。可先在终端运行 npm run export 查看完整报错，或仅使用「重新加载」读取已有 CSV。';
 }

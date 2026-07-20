@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from 'react'
 import axios from 'axios'
+import { mergeSummaryByModel, type FoldModelEntry } from '../lib/mergeDaily'
 
 // ────────── 类型定义 ──────────
 
@@ -53,7 +54,13 @@ function calcCacheHitRate(t: ModelEntry['tokens']): number {
 
 // ────────── 主组件 ──────────
 
-export function ModelLeaderboard({ refreshKey }: { refreshKey?: number }) {
+export function ModelLeaderboard({
+  refreshKey,
+  foldPluginIds = [],
+}: {
+  refreshKey?: number
+  foldPluginIds?: string[]
+}) {
   const [models, setModels] = useState<ModelEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -62,18 +69,36 @@ export function ModelLeaderboard({ refreshKey }: { refreshKey?: number }) {
 
   useEffect(() => {
     setLoading(true)
-    axios
-      .get<SummaryResponse>('/api/summary')
-      .then((r) => {
-        if (r.data.ok && r.data.data?.byModel) {
-          setModels(r.data.data.byModel)
-        } else {
-          setError(r.data.error ?? '接口返回异常')
+    const load = async () => {
+      const r = await axios.get<SummaryResponse>('/api/summary')
+      if (!r.data.ok || !r.data.data?.byModel) {
+        setError(r.data.error ?? '接口返回异常')
+        setModels([])
+        return
+      }
+      let byModel = r.data.data.byModel as FoldModelEntry[]
+      if (foldPluginIds.length > 0) {
+        const extras = await Promise.all(
+          foldPluginIds.map((id) =>
+            axios
+              .get<{ ok: boolean; data?: { byModel?: FoldModelEntry[] } }>(
+                `/api/plugins/${id}/cursor-summary`,
+              )
+              .then((x) => (x.data.ok ? x.data.data?.byModel : null))
+              .catch(() => null),
+          ),
+        )
+        for (const ex of extras) {
+          if (ex) byModel = mergeSummaryByModel(byModel, ex)
         }
-      })
+      }
+      setModels(byModel as ModelEntry[])
+      setError(null)
+    }
+    load()
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false))
-  }, [refreshKey])
+  }, [refreshKey, foldPluginIds.join('|')])
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {

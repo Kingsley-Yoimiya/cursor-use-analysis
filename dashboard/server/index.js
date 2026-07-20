@@ -10,6 +10,12 @@ import {
   syncFromCursor,
 } from './sync.js';
 import {
+  loadPlugins,
+  registerPluginRoutes,
+  pluginHealthPayload,
+  runEnabledPluginSyncSteps,
+} from './plugin-host.js';
+import {
   classifyPool,
   resolveRateForModel as resolveRateForModelShared,
 } from '../../scripts/lib/resolve-model-rate.mjs';
@@ -835,7 +841,11 @@ app.put('/api/reimbursement-profile', (req, res) => {
   }
 });
 
+/** @type {Awaited<ReturnType<typeof loadPlugins>>['plugins']} */
+let loadedPlugins = [];
+
 app.get('/api/health', (_req, res) => {
+  const pluginHealth = pluginHealthPayload(loadedPlugins);
   res.json({
     ok: true,
     repoRoot: REPO_ROOT,
@@ -849,7 +859,10 @@ app.get('/api/health', (_req, res) => {
       'reload',
       'sync',
       'refresh',
+      'plugins',
+      ...pluginHealth.plugins.flatMap((p) => p.features),
     ],
+    ...pluginHealth,
   });
 });
 
@@ -871,10 +884,11 @@ app.post('/api/reload', (_req, res) => {
 });
 
 app.post('/api/sync', async (_req, res) => {
-  const t0 = Date.now();
   console.log('[api/sync] 开始从 Cursor 拉取…');
   const result = await syncFromCursor(REPO_ROOT, { reloadRates: reloadRatesConfig });
   if (result.ok) {
+    const pluginSteps = await runEnabledPluginSyncSteps(REPO_ROOT, loadedPlugins);
+    result.pluginSteps = pluginSteps;
     console.log(`[api/sync] 200 ok ${result.ms}ms`);
     return res.json(result);
   }
@@ -887,10 +901,15 @@ app.post('/api/refresh', async (_req, res) => {
   console.log('[api/refresh] 开始拉取最新数据...');
   const result = await syncFromCursor(REPO_ROOT, { reloadRates: reloadRatesConfig });
   if (result.ok) {
+    const pluginSteps = await runEnabledPluginSyncSteps(REPO_ROOT, loadedPlugins);
     console.log(`[api/refresh] 200 ok 刷新成功 ${result.ms}ms`);
-    return res.json({ ok: true, ms: result.ms, steps: result.steps });
+    return res.json({
+      ok: true,
+      ms: result.ms,
+      steps: result.steps,
+      pluginSteps,
+    });
   }
-  const ms = result.ms ?? 0;
   console.error(`[api/refresh] 刷新失败: ${result.error} ${result.ms}ms`);
   return res.status(500).json({
     ok: false,
@@ -900,9 +919,16 @@ app.post('/api/refresh', async (_req, res) => {
   });
 });
 
+const bootPlugins = await loadPlugins(REPO_ROOT);
+loadedPlugins = bootPlugins.plugins;
+for (const err of bootPlugins.errors) {
+  console.warn(`[plugins] ${err}`);
+}
+await registerPluginRoutes(app, REPO_ROOT, loadedPlugins);
+
 app.listen(PORT, () => {
   const bootMs = Date.now() - bootT0;
   console.log(
-    `[boot] Express 监听 http://127.0.0.1:${PORT} repo=${REPO_ROOT} 启动耗时约 ${bootMs}ms`,
+    `[boot] Express 监听 http://127.0.0.1:${PORT} repo=${REPO_ROOT} 启动耗时约 ${bootMs}ms plugins=${loadedPlugins.length}`,
   );
 });

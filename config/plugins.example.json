@@ -1,0 +1,11 @@
+{
+  "$comment": "Copy to config/plugins.local.json to enable local extensions. That file is gitignored.",
+  "plugins": [
+    {
+      "id": "example-source",
+      "enabled": false,
+      "root": "./plugins/example-source",
+      "options": {}
+    }
+  ]
+}

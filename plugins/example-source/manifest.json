@@ -1,0 +1,24 @@
+{
+  "id": "example-source",
+  "name": "Example Source",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "enabledByDefault": false,
+  "contributes": {
+    "features": ["example-source"],
+    "tabs": [
+      {
+        "id": "example-source",
+        "label": "Example Plugin",
+        "order": 90
+      }
+    ],
+    "syncSteps": ["export"]
+  },
+  "paths": {
+    "summaryRel": "reports/example-source-summary.json"
+  },
+  "entry": {
+    "server": "server.mjs"
+  }
+}
