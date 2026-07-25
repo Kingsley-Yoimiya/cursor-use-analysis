@@ -147,7 +147,9 @@ npm run estimate-cost -- --in ./exports/usage.csv --teams
 产出 JSON 含 **`byModel` 汇总** 与 **`rows` 逐行明细**（`estimatedUsd`、`inputMult` 等）。  
 **说明**：`Kind`/`Cost` 为 `Included` 时，脚本仍可估算「若按 API 单价计费」的美元，**不等于**当月发票；**未建模**包月池抵扣、Premium 具体选型细节、旧版「按请求计费」等。
 
-CSV 中出现的 **`Model` 字符串** 先走 **`aliases`**，再按 effort / thinking / preview 等后缀启发式收拢到公开档位（见 `scripts/lib/resolve-model-rate.mjs`）。全新基座模型仍需在 **`config/model-rates.json`** 增补费率；裸名 `premium` 故意记为 `unknown_model`。
+CSV / 附加源中的 **`Model` 字符串** 先走 **`aliases`**，再按企业后缀（`joybuilder`/`oxygen`）、Claude 语序与版本点横杠变体、effort / thinking / preview 等启发式收拢到公开档位（见 `scripts/lib/resolve-model-rate.mjs`）。全新基座模型仍需在 **`config/model-rates.json`** 增补费率。
+
+合并 DongCC 等附加源时：企业零售名由插件 `model-map.json` 映射到 `cursorModel` 后再解析；主仓解析器也能直接识别常见 `*-joybuilder` 与 `claude-haiku-4-5` 等变体。裸名 `premium`、官网无档的冒烟名（如 `Opus-5`）仍记为 `unknown_model`。
 
 ---
 

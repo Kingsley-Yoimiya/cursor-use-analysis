@@ -55,6 +55,18 @@ Canvas（inline 数字）→ ~/.cursor/projects/<ws>/canvases/*.canvas.tsx
 
 日历可用 CSS grid 色阶格子（主题 token），避免手写 hex。`Text` 上不要直接塞 React `key`（包一层 `span`）。
 
+## 附加源与未识别模型
+
+打开「合并附加用量」时，KPI 的 `unknownModelRows` = 主仓 estimate + 各插件 `cursor-summary` 之和。
+
+DongCC 未识别通常来自企业名 → Cursor 键映射缺口，而不是主仓 CSV。排查顺序：
+
+1. `reports/dongcc-cursor-summary.json` → `byModel` 里 `rateResolved: false`
+2. 插件 `model-map.json` / `map_model.py`（Sonnet 5 → `claude-sonnet-5`；`claude-haiku-4-5` → `claude-4.5-haiku`）
+3. 主仓 `config/model-rates.json` aliases + `scripts/lib/resolve-model-rate.mjs`（已支持 `*-joybuilder`、Claude 语序/版本变体）
+
+官网无档名（Opus-5 冒烟、测试垃圾）应保持 unknown；裸名 `premium` 属主仓历史 CSV，与附加源无关。
+
 ## 隐私
 
 分享仓库或截图前：不要提交原始 CSV / estimate 全量 rows；Canvas 只内嵌聚合数字即可。
