@@ -68,8 +68,8 @@ function pushClaudeVariants(key, push) {
     for (const v of versionSpellings(ver)) {
       push(`claude-${family}-${v.replace(/\./g, '-')}`);
       push(`claude-${v}-${family}`);
-      // Sonnet / Fable 主版本 5：Cursor 键为 claude-sonnet-5 / claude-fable-5
-      if ((family === 'sonnet' || family === 'fable') && /^5(?:[.-]0)?$/.test(v)) {
+      // 主版本 5 / 5.0：claude-sonnet-5 / claude-fable-5 / claude-opus-5
+      if (/^5(?:[.-]0)?$/.test(v)) {
         push(`claude-${family}-5`);
       }
     }
@@ -83,13 +83,13 @@ function pushClaudeVariants(key, push) {
     for (const v of versionSpellings(ver)) {
       push(`claude-${v}-${family}`);
       push(`claude-${family}-${v.replace(/\./g, '-')}`);
-      if ((family === 'sonnet' || family === 'fable') && /^5(?:[.-]0)?$/.test(v)) {
+      if (/^5(?:[.-]0)?$/.test(v)) {
         push(`claude-${family}-5`);
       }
     }
   }
 
-  // 短名：sonnet-5 / opus-4-8 / haiku-4.5
+  // 短名：sonnet-5 / opus-5 / haiku-4.5
   m = key.match(/^(sonnet|haiku|opus|fable)-(\d+(?:[.-]\d+)*)$/);
   if (m) {
     const family = m[1];
@@ -97,17 +97,18 @@ function pushClaudeVariants(key, push) {
     for (const v of versionSpellings(ver)) {
       push(`claude-${family}-${v.replace(/\./g, '-')}`);
       push(`claude-${v}-${family}`);
-      if ((family === 'sonnet' || family === 'fable') && /^5(?:[.-]0)?$/.test(v)) {
+      if (/^5(?:[.-]0)?$/.test(v)) {
         push(`claude-${family}-5`);
       }
     }
   }
 
-  // claude-opus 版本点写法：claude-opus-4.8 → claude-opus-4-8
+  // claude-opus 版本点写法：claude-opus-4.8 → claude-opus-4-8；claude-opus-5.0 → claude-opus-5
   m = key.match(/^claude-opus-(\d+(?:[.-]\d+)*)$/);
   if (m) {
     for (const v of versionSpellings(m[1])) {
       push(`claude-opus-${v.replace(/\./g, '-')}`);
+      if (/^5(?:[.-]0)?$/.test(v)) push('claude-opus-5');
     }
   }
 }

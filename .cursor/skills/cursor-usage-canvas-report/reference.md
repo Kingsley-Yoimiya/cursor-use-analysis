@@ -65,7 +65,7 @@ DongCC 未识别通常来自企业名 → Cursor 键映射缺口，而不是主�
 2. 插件 `model-map.json` / `map_model.py`（Sonnet 5 → `claude-sonnet-5`；`claude-haiku-4-5` → `claude-4.5-haiku`）
 3. 主仓 `config/model-rates.json` aliases + `scripts/lib/resolve-model-rate.mjs`（已支持 `*-joybuilder`、Claude 语序/版本变体）
 
-官网无档名（Opus-5 冒烟、测试垃圾）应保持 unknown；裸名 `premium` 属主仓历史 CSV，与附加源无关。
+Claude Opus 5（`claude-opus-5`，$5/$6.25/$0.5/$25）已入主仓费率；企业名 `Opus-5` / `Claude-Opus-5*` 应能解析。仅测试垃圾名与裸名 `premium` 保持 unknown。
 
 ## 隐私
 

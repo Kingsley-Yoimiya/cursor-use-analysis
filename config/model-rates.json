@@ -1,5 +1,5 @@
 {
-  "version": 10,
+  "version": 11,
   "currency": "USD",
   "sources": [
     "https://cursor.com/docs/models-and-pricing",
@@ -29,16 +29,18 @@
     "Claude 4 Sonnet / Claude 4 Sonnet 1M：主计费表仍列；1M 档输入超过 200k 时输入侧 2x。",
     "Claude Sonnet 5：截至 2026-08-31 启动促销 $2/M 入、$10/M 出；cache write/read 按 Anthropic 惯例 1.25x / 0.1x 输入价推导为 $2.5 / $0.2。促销结束后改回表列 $3 / $3.75 / $0.3 / $15。",
     "Claude Opus 4.8：表列 $5 / $6.25 / $0.5 / $25；Fast mode（claude-opus-4-8-fast）专题页 $10/M 入、$50/M 出，cache 按 1.25x / 0.1x 推导。",
-    "Claude Fable 5：表列 $10 / $12.5 / $1 / $50（约 2x Opus 4.8）。",
+    "Claude Opus 5：主计费表 $5 / $6.25 / $0.5 / $25（与 Opus 4.8 同价；Anthropic 2026-07-24 发布）；Fast mode（claude-opus-5-fast）为 2x 基价 $10 / $12.5 / $1 / $50。CSV/企业名含 Claude-Opus-5、Opus-5、claude-opus-5.0 等均映射本档。",
+    "Claude Fable 5：表列 $10 / $12.5 / $1 / $50（约 2x Opus 5）。",
+    "Gemini 3.6 Flash：主计费表 $1.5 / — / $0.15 / $7.5；cache write 按与其它 Gemini 一致取输入价。",
     "导出 CSV 中 Kind=Included 且 Cost=Included 时，本脚本仍可按公开单价估算「等价美元」，便于可视化；实际账单以控制台为准。",
     "长上下文 2x：当「输入侧 token 合计」超过阈值时，仅对输入侧三项（cache write / 非 cache input / cache read）的费用乘以倍数；输出费不乘。",
-    "Claude 4.5 / 4.6 / Sonnet 5 / Opus 4.7–4.8：官网标称 Max Mode 下无 long-context surcharge，故不设 2x 阈值。",
+    "Claude 4.5 / 4.6 / Sonnet 5 / Opus 4.7–4.8 / Opus 5：官网标称 Max Mode 下无 long-context surcharge，故不设 2x 阈值。",
     "Teams 的 Cursor Token Rate（$0.25/M）为额外费项，需 CLI 传 --teams 才叠加；Auto 与 First-party（billingPool=firstParty，含 Composer、Grok 4.5）豁免。",
     "官方未单独列出的「变体名」（如 *-thinking、Premium）已映射到最近似的公开档位，仅作估算；Thinking 计 2 次请求等规则未建模。",
     "解析顺序：精确 aliases → 去 cursor-/new- 前缀 → 剥企业后缀 joybuilder|oxygen → Claude 语序/版本点横杠变体与短名 → 收拢 *-effort-fast / *-fast-effort → 逐段剥 high|medium|low|xhigh|max|thinking|preview。绝不把 -fast 剥成非 Fast 档。",
     "附加源（DongCC 等）：企业零售名如 Claude-Opus-4.8-joybuilder 先由插件 map 到 cursorModel，再走本解析器；主仓亦直接识别 *-joybuilder 与 claude-haiku-4-5 / claude-5-sonnet 等变体。",
-    "Claude 键约定：4.x Sonnet/Haiku 用 claude-{ver}-{family}（点分版本）；Opus 4.x 用 claude-opus-{ver}（横杠版本）；Sonnet 5 / Fable 5 用 claude-sonnet-5 / claude-fable-5。",
-    "CSV 中裸名 premium（非 Premium (Codex 5.3)）无法可靠映射，仍记为 unknown_model。官网无档的 Opus-5 冒烟名保持 unknown。"
+    "Claude 键约定：4.x Sonnet/Haiku 用 claude-{ver}-{family}（点分版本）；Opus 4.x 用 claude-opus-{ver}（横杠版本）；Sonnet 5 / Fable 5 / Opus 5 用 claude-sonnet-5 / claude-fable-5 / claude-opus-5（5.0 收拢为 5）。",
+    "CSV 中裸名 premium（非 Premium (Codex 5.3)）与测试垃圾名无法可靠映射，仍记为 unknown_model。"
   ],
   "autoPool": {
     "inputPerMillion": 1.25,
@@ -209,6 +211,24 @@
     },
     "claude-opus-4-8-fast": {
       "displayName": "Claude Opus 4.8（fast mode：$10/M 入、$50/M 出）",
+      "inputPerMillion": 10,
+      "cacheWritePerMillion": 12.5,
+      "cacheReadPerMillion": 1,
+      "outputPerMillion": 50,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
+    "claude-opus-5": {
+      "displayName": "Claude Opus 5",
+      "inputPerMillion": 5,
+      "cacheWritePerMillion": 6.25,
+      "cacheReadPerMillion": 0.5,
+      "outputPerMillion": 25,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
+    "claude-opus-5-fast": {
+      "displayName": "Claude Opus 5（fast mode：2x 基价 $10/M 入、$50/M 出）",
       "inputPerMillion": 10,
       "cacheWritePerMillion": 12.5,
       "cacheReadPerMillion": 1,
@@ -477,6 +497,15 @@
       "longContextInputTokensThreshold": null,
       "longContextMultiplier": null
     },
+    "gemini-3.6-flash": {
+      "displayName": "Gemini 3.6 Flash",
+      "inputPerMillion": 1.5,
+      "cacheWritePerMillion": 1.5,
+      "cacheReadPerMillion": 0.15,
+      "outputPerMillion": 7.5,
+      "longContextInputTokensThreshold": null,
+      "longContextMultiplier": null
+    },
     "glm-5.2": {
       "displayName": "GLM 5.2",
       "inputPerMillion": 1.4,
@@ -597,6 +626,17 @@
     "claude-opus-4-8-thinking-xhigh": "claude-opus-4-8",
     "claude-opus-4-8-fast": "claude-opus-4-8-fast",
     "claude-opus-4.8-fast": "claude-opus-4-8-fast",
+    "claude-opus-5": "claude-opus-5",
+    "claude-opus-5.0": "claude-opus-5",
+    "claude-opus-5-0": "claude-opus-5",
+    "claude-opus-5-joybuilder": "claude-opus-5",
+    "claude-opus-5.0-joybuilder": "claude-opus-5",
+    "opus-5": "claude-opus-5",
+    "opus-5.0": "claude-opus-5",
+    "claude-opus-5-thinking-high": "claude-opus-5",
+    "claude-opus-5-thinking-xhigh": "claude-opus-5",
+    "claude-opus-5-fast": "claude-opus-5-fast",
+    "claude-opus-5.0-fast": "claude-opus-5-fast",
     "claude-sonnet-5": "claude-sonnet-5",
     "claude-5-sonnet": "claude-sonnet-5",
     "claude-5.0-sonnet": "claude-sonnet-5",
@@ -695,6 +735,8 @@
     "gemini-3.1-pro": "gemini-3.1-pro",
     "gemini-3.1-pro-preview": "gemini-3.1-pro",
     "gemini-3.5-flash": "gemini-3.5-flash",
+    "gemini-3.6-flash": "gemini-3.6-flash",
+    "gemini-3.6-flash-preview": "gemini-3.6-flash",
     "glm-5.2": "glm-5.2",
     "grok-4.3": "grok-4.3",
     "grok-4-3": "grok-4.3",

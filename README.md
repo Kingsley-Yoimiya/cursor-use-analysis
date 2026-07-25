@@ -149,7 +149,7 @@ npm run estimate-cost -- --in ./exports/usage.csv --teams
 
 CSV / 附加源中的 **`Model` 字符串** 先走 **`aliases`**，再按企业后缀（`joybuilder`/`oxygen`）、Claude 语序与版本点横杠变体、effort / thinking / preview 等启发式收拢到公开档位（见 `scripts/lib/resolve-model-rate.mjs`）。全新基座模型仍需在 **`config/model-rates.json`** 增补费率。
 
-合并 DongCC 等附加源时：企业零售名由插件 `model-map.json` 映射到 `cursorModel` 后再解析；主仓解析器也能直接识别常见 `*-joybuilder` 与 `claude-haiku-4-5` 等变体。裸名 `premium`、官网无档的冒烟名（如 `Opus-5`）仍记为 `unknown_model`。
+合并 DongCC 等附加源时：企业零售名由插件 `model-map.json` 映射到 `cursorModel` 后再解析；主仓解析器也能直接识别常见 `*-joybuilder`、`Opus-5` / `claude-haiku-4-5` 等变体。裸名 `premium` 与测试垃圾名仍记为 `unknown_model`。
 
 ---
 

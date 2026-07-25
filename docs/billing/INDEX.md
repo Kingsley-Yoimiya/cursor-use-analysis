@@ -1,6 +1,6 @@
 # 计费文档快照
 
-- 抓取时间（UTC）：2026-07-12T15:02:26.477Z
+- 抓取时间（UTC）：2026-07-25T12:02:10.236Z
 
 - [Models & Pricing (docs)](https://cursor.com/docs/models-and-pricing) → `models-and-pricing.md` (ok)
 - [Pricing Policy (terms)](https://cursor.com/terms/pricing) → `pricing-policy.md` (ok)
