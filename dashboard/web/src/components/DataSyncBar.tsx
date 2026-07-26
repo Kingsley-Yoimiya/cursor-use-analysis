@@ -223,7 +223,7 @@ export function DataSyncBar({ onReload }: { onReload: () => void }) {
     <>
       <div className="flex items-center gap-2">
         <span
-          className="hidden lg:inline text-[11px] text-slate-400 dark:text-slate-500 max-w-[180px] truncate"
+          className="hidden lg:inline text-[11px] text-fg-faint max-w-[180px] truncate"
           title={statusLine}
         >
           {statusLine}
@@ -233,10 +233,7 @@ export function DataSyncBar({ onReload }: { onReload: () => void }) {
           type="button"
           onClick={handleReload}
           disabled={busy || !caps}
-          className="flex items-center h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700
-            bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300
-            hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-medium
-            disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          className="btn-ghost"
           title="重新读取本地 CSV 并刷新图表（不访问 Cursor）"
         >
           {reloading ? '…' : '重新加载'}
@@ -246,10 +243,7 @@ export function DataSyncBar({ onReload }: { onReload: () => void }) {
           type="button"
           onClick={handleSync}
           disabled={syncDisabled}
-          className="flex items-center h-8 px-2.5 rounded-lg border border-emerald-600/40
-            bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300
-            hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-xs font-medium
-            disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          className="btn-primary"
           title={
             !caps?.sync && !caps?.refresh
               ? '请重启 dashboard/server'
@@ -266,12 +260,12 @@ export function DataSyncBar({ onReload }: { onReload: () => void }) {
 
       {banner && (
         <div
-          className={`fixed bottom-4 right-4 z-50 max-w-md px-4 py-3 rounded-lg shadow-lg border text-sm ${
+          className={`fixed bottom-4 right-4 z-50 max-w-md px-4 py-3 rounded-lg shadow-theme border text-sm ${
             banner.kind === 'ok'
-              ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+              ? 'bg-accent-soft border-line text-accent'
               : banner.kind === 'err'
-                ? 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'
-                : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                ? 'bg-danger-soft border-danger-border text-danger'
+                : 'bg-surface-2 border-line text-fg'
           }`}
           role="status"
         >

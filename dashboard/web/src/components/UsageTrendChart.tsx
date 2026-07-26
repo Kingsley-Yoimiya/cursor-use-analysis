@@ -12,7 +12,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { useIsDark } from '../context/ThemeContext'
+import { useChartColors } from '../context/ThemeContext'
 
 // ────────── 类型定义 ──────────
 
@@ -52,9 +52,9 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   const cost = payload[0]?.value ?? 0
   return (
-    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 shadow-xl text-xs">
-      <p className="mb-1 font-medium text-slate-500 dark:text-slate-400">{label}</p>
-      <p className="font-mono text-emerald-600 dark:text-emerald-400">
+    <div className="rounded-lg border border-line bg-elevated px-3 py-2 shadow-theme text-xs">
+      <p className="mb-1 font-medium text-fg-muted">{label}</p>
+      <p className="font-mono text-accent">
         ${cost.toFixed(4)}
       </p>
     </div>
@@ -74,13 +74,12 @@ interface UsageTrendChartProps {
 }
 
 export function UsageTrendChart({ daily }: UsageTrendChartProps) {
-  const isDark = useIsDark()
-  const gridColor = isDark ? '#1e293b' : '#e2e8f0'
-  const tickColor = isDark ? '#64748b' : '#94a3b8'
+  const chartColors = useChartColors()
+  const accentColor = chartColors.chart1
 
   if (!daily) {
     return (
-      <div className="h-64 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800" />
+      <div className="h-64 animate-pulse rounded-xl bg-surface-2 border border-line" />
     )
   }
 
@@ -90,28 +89,28 @@ export function UsageTrendChart({ daily }: UsageTrendChartProps) {
   }))
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-5 shadow-sm dark:shadow-lg">
-      <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-4">
+    <div className="rounded-xl border border-line bg-surface/60 p-5 shadow-theme">
+      <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint mb-4">
         每日 API 等效价值（USD）
       </h3>
       <ResponsiveContainer width="100%" height={260}>
         <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
-              <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
+              <stop offset="5%" stopColor={accentColor} stopOpacity={0.35} />
+              <stop offset="95%" stopColor={accentColor} stopOpacity={0.02} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+          <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
           <XAxis
             dataKey="date"
-            tick={{ fill: tickColor, fontSize: 11 }}
+            tick={{ fill: chartColors.tick, fontSize: 11 }}
             tickLine={false}
-            axisLine={{ stroke: gridColor }}
+            axisLine={{ stroke: chartColors.grid }}
             interval="preserveStartEnd"
           />
           <YAxis
-            tick={{ fill: tickColor, fontSize: 11 }}
+            tick={{ fill: chartColors.tick, fontSize: 11 }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) => `$${v.toFixed(1)}`}
@@ -121,11 +120,11 @@ export function UsageTrendChart({ daily }: UsageTrendChartProps) {
           <Area
             type="monotone"
             dataKey="cost"
-            stroke="#10b981"
+            stroke={accentColor}
             strokeWidth={2}
             fill="url(#costGradient)"
             dot={false}
-            activeDot={{ r: 4, fill: '#10b981', strokeWidth: 0 }}
+            activeDot={{ r: 4, fill: accentColor, strokeWidth: 0 }}
           />
         </AreaChart>
       </ResponsiveContainer>
@@ -151,7 +150,7 @@ export function UsageTrendChartWithFetch() {
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-600 dark:text-red-400">
+      <div className="rounded-xl border border-danger-border bg-danger-soft p-4 text-sm text-danger">
         加载每日趋势失败：{error}
       </div>
     )

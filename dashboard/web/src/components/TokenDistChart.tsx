@@ -1,11 +1,12 @@
 /**
  * 每日 Token 消耗分布堆叠柱状图
  * 颜色语义：
- *   - cacheRead (缓存命中)：蓝色 #3b82f6，最节省，高亮
- *   - inputCacheWrite (缓存写入)：绿色 #22c55e
- *   - inputNoCache (无缓存输入)：橙色 #f97316，未命中，需关注
- *   - outputTokens (输出)：紫色 #a78bfa
+ *   - cacheRead (缓存命中)：chart2，最节省，高亮
+ *   - inputCacheWrite (缓存写入)：chart3
+ *   - inputNoCache (无缓存输入)：chart4，未命中，需关注
+ *   - outputTokens (输出)：chart5
  */
+import { useMemo } from 'react'
 import {
   BarChart,
   Bar,
@@ -16,7 +17,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts'
-import { useIsDark } from '../context/ThemeContext'
+import { useChartColors } from '../context/ThemeContext'
 
 // ────────── 类型定义 ──────────
 
@@ -31,16 +32,9 @@ interface DailyEntry {
   rows: number
 }
 
-// ────────── 颜色配置 ──────────
+type ColorKey = 'cacheRead' | 'inputCacheWrite' | 'inputNoCache' | 'outputTokens'
 
-const COLORS = {
-  cacheRead: '#3b82f6',
-  inputCacheWrite: '#22c55e',
-  inputNoCache: '#f97316',
-  outputTokens: '#a78bfa',
-}
-
-const LABELS: Record<keyof typeof COLORS, string> = {
+const LABELS: Record<ColorKey, string> = {
   cacheRead: 'Cache Read',
   inputCacheWrite: 'Cache Write',
   inputNoCache: 'No-Cache Input',
@@ -51,7 +45,7 @@ const LABELS: Record<keyof typeof COLORS, string> = {
 
 interface TooltipPayloadItem {
   value: number
-  dataKey: keyof typeof COLORS
+  dataKey: ColorKey
   color: string
   name: string
 }
@@ -72,17 +66,17 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   const total = payload.reduce((s, p) => s + (p.value ?? 0), 0)
   return (
-    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 shadow-xl text-xs min-w-[160px]">
-      <p className="mb-2 font-medium text-slate-500 dark:text-slate-400">{label}</p>
+    <div className="rounded-lg border border-line bg-elevated px-3 py-2 shadow-theme text-xs min-w-[160px]">
+      <p className="mb-2 font-medium text-fg-muted">{label}</p>
       {[...payload].reverse().map((p) => (
         <div key={p.dataKey} className="flex justify-between gap-4 mb-0.5">
           <span style={{ color: p.color }}>{LABELS[p.dataKey] ?? p.name}</span>
-          <span className="font-mono text-slate-700 dark:text-slate-300">{fmtTok(p.value)}</span>
+          <span className="font-mono text-fg">{fmtTok(p.value)}</span>
         </div>
       ))}
-      <div className="mt-1.5 border-t border-slate-200 dark:border-slate-800 pt-1 flex justify-between">
-        <span className="text-slate-400 dark:text-slate-500">合计</span>
-        <span className="font-mono text-slate-800 dark:text-slate-200">{fmtTok(total)}</span>
+      <div className="mt-1.5 border-t border-line pt-1 flex justify-between">
+        <span className="text-fg-faint">合计</span>
+        <span className="font-mono text-fg">{fmtTok(total)}</span>
       </div>
     </div>
   )
@@ -101,12 +95,12 @@ function CustomLegend({ payload }: { payload?: LegendPayloadItem[] }) {
   return (
     <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 mt-2">
       {payload.map((entry) => (
-        <span key={entry.value} className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+        <span key={entry.value} className="flex items-center gap-1.5 text-[11px] text-fg-muted">
           <span
             className="inline-block h-2.5 w-2.5 rounded-sm"
             style={{ backgroundColor: entry.color }}
           />
-          {LABELS[entry.value as keyof typeof COLORS] ?? entry.value}
+          {LABELS[entry.value as ColorKey] ?? entry.value}
         </span>
       ))}
     </div>
@@ -126,13 +120,20 @@ interface TokenDistChartProps {
 }
 
 export function TokenDistChart({ daily }: TokenDistChartProps) {
-  const isDark = useIsDark()
-  const gridColor = isDark ? '#1e293b' : '#e2e8f0'
-  const tickColor = isDark ? '#64748b' : '#94a3b8'
+  const chartColors = useChartColors()
+  const colors = useMemo(
+    () => ({
+      cacheRead: chartColors.chart2,
+      inputCacheWrite: chartColors.chart3,
+      inputNoCache: chartColors.chart4,
+      outputTokens: chartColors.chart5,
+    }),
+    [chartColors],
+  )
 
   if (!daily) {
     return (
-      <div className="h-64 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800" />
+      <div className="h-64 animate-pulse rounded-xl bg-surface-2 border border-line" />
     )
   }
 
@@ -145,8 +146,8 @@ export function TokenDistChart({ daily }: TokenDistChartProps) {
   }))
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-5 shadow-sm dark:shadow-lg">
-      <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-4">
+    <div className="rounded-xl border border-line bg-surface/60 p-5 shadow-theme">
+      <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint mb-4">
         每日 Token 消耗分布
       </h3>
       <ResponsiveContainer width="100%" height={280}>
@@ -155,27 +156,27 @@ export function TokenDistChart({ daily }: TokenDistChartProps) {
           margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
           barCategoryGap="20%"
         >
-          <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
           <XAxis
             dataKey="date"
-            tick={{ fill: tickColor, fontSize: 11 }}
+            tick={{ fill: chartColors.tick, fontSize: 11 }}
             tickLine={false}
-            axisLine={{ stroke: gridColor }}
+            axisLine={{ stroke: chartColors.grid }}
             interval="preserveStartEnd"
           />
           <YAxis
-            tick={{ fill: tickColor, fontSize: 11 }}
+            tick={{ fill: chartColors.tick, fontSize: 11 }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) => fmtTok(v)}
             width={48}
           />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: isDark ? '#1e293b55' : '#e2e8f055' }} />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: chartColors.cursor }} />
           <Legend content={<CustomLegend />} />
-          <Bar dataKey="cacheRead" name="cacheRead" stackId="a" fill={COLORS.cacheRead} radius={[0, 0, 0, 0]} />
-          <Bar dataKey="inputCacheWrite" name="inputCacheWrite" stackId="a" fill={COLORS.inputCacheWrite} />
-          <Bar dataKey="inputNoCache" name="inputNoCache" stackId="a" fill={COLORS.inputNoCache} />
-          <Bar dataKey="outputTokens" name="outputTokens" stackId="a" fill={COLORS.outputTokens} radius={[3, 3, 0, 0]} />
+          <Bar dataKey="cacheRead" name="cacheRead" stackId="a" fill={colors.cacheRead} radius={[0, 0, 0, 0]} />
+          <Bar dataKey="inputCacheWrite" name="inputCacheWrite" stackId="a" fill={colors.inputCacheWrite} />
+          <Bar dataKey="inputNoCache" name="inputNoCache" stackId="a" fill={colors.inputNoCache} />
+          <Bar dataKey="outputTokens" name="outputTokens" stackId="a" fill={colors.outputTokens} radius={[3, 3, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

@@ -2,7 +2,7 @@
  * 分模型每日用量趋势图
  * 支持 USD / Tokens 切换，自动取 Top N 模型，其余归入"其他"
  */
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   BarChart,
   Bar,
@@ -13,7 +13,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts'
-import { useIsDark } from '../context/ThemeContext'
+import { useChartColors } from '../context/ThemeContext'
 
 // ────────── 类型定义 ──────────
 
@@ -24,22 +24,6 @@ interface DailyEntry {
 }
 
 type ViewMode = 'usd' | 'tokens'
-
-// ────────── 颜色调色盘 ──────────
-
-const PALETTE = [
-  '#f59e0b', // amber-400
-  '#8b5cf6', // violet-500
-  '#06b6d4', // cyan-500
-  '#10b981', // emerald-500
-  '#f43f5e', // rose-500
-  '#84cc16', // lime-500
-  '#fb923c', // orange-400
-  '#60a5fa', // blue-400
-  '#e879f9', // fuchsia-400
-  '#34d399', // emerald-400
-]
-const OTHERS_COLOR = '#64748b' // slate-500
 
 const MAX_MODELS = 8
 
@@ -79,19 +63,19 @@ function CustomTooltip({ active, payload, label, mode }: CustomTooltipProps) {
   const total = payload.reduce((s, p) => s + (p.value ?? 0), 0)
   const sorted = [...payload].reverse().filter((p) => p.value > 0)
   return (
-    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 shadow-xl text-xs min-w-[180px] max-h-64 overflow-y-auto">
-      <p className="mb-2 font-medium text-slate-500 dark:text-slate-400">{label}</p>
+    <div className="rounded-lg border border-line bg-elevated px-3 py-2 shadow-theme text-xs min-w-[180px] max-h-64 overflow-y-auto">
+      <p className="mb-2 font-medium text-fg-muted">{label}</p>
       {sorted.map((p) => (
         <div key={p.dataKey} className="flex justify-between gap-4 mb-0.5">
           <span className="truncate max-w-[120px]" style={{ color: p.color }}>{p.name}</span>
-          <span className="font-mono text-slate-700 dark:text-slate-300 shrink-0">
+          <span className="font-mono text-fg shrink-0">
             {mode === 'usd' ? `$${p.value.toFixed(3)}` : fmtTok(p.value)}
           </span>
         </div>
       ))}
-      <div className="mt-1.5 border-t border-slate-200 dark:border-slate-800 pt-1 flex justify-between">
-        <span className="text-slate-400 dark:text-slate-500">合计</span>
-        <span className="font-mono text-slate-800 dark:text-slate-200">
+      <div className="mt-1.5 border-t border-line pt-1 flex justify-between">
+        <span className="text-fg-faint">合计</span>
+        <span className="font-mono text-fg">
           {mode === 'usd' ? `$${total.toFixed(3)}` : fmtTok(total)}
         </span>
       </div>
@@ -111,7 +95,7 @@ function CustomLegend({ payload }: { payload?: LegendPayloadItem[] }) {
   return (
     <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 mt-3 px-2">
       {payload.map((entry) => (
-        <span key={entry.value} className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 max-w-[180px]">
+        <span key={entry.value} className="flex items-center gap-1.5 text-[11px] text-fg-muted max-w-[180px]">
           <span
             className="inline-block h-2.5 w-2.5 rounded-sm shrink-0"
             style={{ backgroundColor: entry.color }}
@@ -131,9 +115,23 @@ interface ModelDetailedChartProps {
 
 export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
   const [mode, setMode] = useState<ViewMode>('usd')
-  const isDark = useIsDark()
-  const gridColor = isDark ? '#1e293b' : '#e2e8f0'
-  const tickColor = isDark ? '#64748b' : '#94a3b8'
+  const chartColors = useChartColors()
+  const palette = useMemo(
+    () => [
+      chartColors.poolAuto,
+      chartColors.poolFirst,
+      chartColors.poolApi,
+      chartColors.chart1,
+      chartColors.chart4,
+      chartColors.chart3,
+      chartColors.chart2,
+      chartColors.chart5,
+      chartColors.accent,
+      chartColors.muted,
+    ],
+    [chartColors],
+  )
+  const othersColor = chartColors.muted
 
   // 计算各模型总量，取 Top N
   const topModels = useMemo(() => {
@@ -183,14 +181,14 @@ export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
 
   if (!daily) {
     return (
-      <div className="h-80 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800" />
+      <div className="h-80 animate-pulse rounded-xl bg-surface-2 border border-line" />
     )
   }
 
   if (daily.length === 0 || topModels.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-5 flex items-center justify-center h-40">
-        <p className="text-slate-400 dark:text-slate-500 text-sm">暂无数据</p>
+      <div className="rounded-xl border border-line bg-surface/60 p-5 flex items-center justify-center h-40">
+        <p className="text-fg-faint text-sm">暂无数据</p>
       </div>
     )
   }
@@ -208,18 +206,18 @@ export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
   const allKeys = [...topModels, ...(hasOthers ? ['其他'] : [])]
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-5 shadow-sm dark:shadow-lg">
+    <div className="rounded-xl border border-line bg-surface/60 p-5 shadow-theme">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">
+        <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
           每日各模型消耗细分（Top {topModels.length}）
         </h3>
-        <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 text-xs">
+        <div className="flex rounded-lg overflow-hidden border border-line text-xs">
           <button
             onClick={() => setMode('usd')}
             className={`px-3 py-1 transition-colors ${
               mode === 'usd'
-                ? 'bg-emerald-600 text-white'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                ? 'bg-accent text-accent-fg'
+                : 'bg-surface-2 text-fg-muted hover:text-fg hover:bg-surface'
             }`}
           >
             USD
@@ -228,8 +226,8 @@ export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
             onClick={() => setMode('tokens')}
             className={`px-3 py-1 transition-colors ${
               mode === 'tokens'
-                ? 'bg-sky-600 text-white'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                ? 'bg-info text-white'
+                : 'bg-surface-2 text-fg-muted hover:text-fg hover:bg-surface'
             }`}
           >
             Tokens
@@ -243,22 +241,22 @@ export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
           margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
           barCategoryGap="20%"
         >
-          <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
           <XAxis
             dataKey="date"
-            tick={{ fill: tickColor, fontSize: 11 }}
+            tick={{ fill: chartColors.tick, fontSize: 11 }}
             tickLine={false}
-            axisLine={{ stroke: gridColor }}
+            axisLine={{ stroke: chartColors.grid }}
             interval="preserveStartEnd"
           />
           <YAxis
-            tick={{ fill: tickColor, fontSize: 11 }}
+            tick={{ fill: chartColors.tick, fontSize: 11 }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) => mode === 'usd' ? `$${v.toFixed(2)}` : fmtTok(v)}
             width={60}
           />
-          <Tooltip content={renderTooltip} cursor={{ fill: isDark ? '#1e293b55' : '#e2e8f055' }} />
+          <Tooltip content={renderTooltip} cursor={{ fill: chartColors.cursor }} />
           <Legend content={<CustomLegend />} />
 
           {allKeys.map((model, i) => (
@@ -267,7 +265,7 @@ export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
               dataKey={model}
               name={model}
               stackId="a"
-              fill={model === '其他' ? OTHERS_COLOR : PALETTE[i % PALETTE.length]}
+              fill={model === '其他' ? othersColor : palette[i % palette.length]}
               radius={i === allKeys.length - 1 ? [3, 3, 0, 0] : undefined}
             />
           ))}

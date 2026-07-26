@@ -54,7 +54,7 @@ export function MergeAddonToggle({
     <label
       className={`inline-flex items-center gap-2 cursor-pointer select-none ${
         compact ? 'text-[11px]' : 'text-xs'
-      } text-slate-500 dark:text-slate-400`}
+      } text-fg-muted`}
       title="打开后，概览与模型详情会叠加本地附加数据源的等价用量；报销导出与周期统计仍只用主数据源。"
     >
       <button
@@ -62,19 +62,19 @@ export function MergeAddonToggle({
         role="switch"
         aria-checked={enabled}
         onClick={() => onChange(!enabled)}
-        className={`relative w-9 h-5 rounded-full transition-colors ${
+        className={`ui-press relative w-9 h-5 rounded-full ${
           enabled
-            ? 'bg-emerald-500'
-            : 'bg-slate-300 dark:bg-slate-700'
+            ? 'bg-accent'
+            : 'bg-line'
         }`}
       >
         <span
-          className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+          className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-elevated shadow transition-transform duration-[var(--press-ms)] ease-[var(--ease-out)] ${
             enabled ? 'translate-x-4' : ''
           }`}
         />
       </button>
-      <span className={enabled ? 'text-emerald-600 dark:text-emerald-400' : ''}>
+      <span className={enabled ? 'text-accent' : ''}>
         {label}
       </span>
     </label>

@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useIsDark } from '../context/ThemeContext'
+import { useChartColors } from '../context/ThemeContext'
 import {
   MergeAddonToggle,
   type AddonSourceInfo,
@@ -87,16 +87,16 @@ function KPICard({
 }) {
   return (
     <div
-      className={`rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-5 shadow-sm
+      className={`rounded-xl border border-line bg-surface/60 p-5 shadow-theme
         relative overflow-hidden border-l-4 ${accent}`}
     >
-      <p className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">
+      <p className="text-xs font-medium uppercase tracking-widest text-fg-faint">
         {label}
       </p>
-      <p className="mt-2 text-2xl font-bold font-mono tracking-tight text-slate-800 dark:text-slate-100">
+      <p className="mt-2 text-2xl font-bold font-mono tracking-tight text-fg">
         {value}
       </p>
-      {sub && <p className="mt-1 text-xs text-slate-400 dark:text-slate-600">{sub}</p>}
+      {sub && <p className="mt-1 text-xs text-fg-faint">{sub}</p>}
     </div>
   )
 }
@@ -114,12 +114,22 @@ export function GenericSourceView({
   onMergeChange?: (v: boolean) => void
   addonSources?: AddonSourceInfo[]
 }) {
-  const isDark = useIsDark()
+  const chartColors = useChartColors()
   const [data, setData] = useState<PluginSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hint, setHint] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
+
+  const barColors = useMemo(
+    () => ({
+      cacheRead: chartColors.chart2,
+      inputCacheWrite: chartColors.chart3,
+      inputNoCache: chartColors.chart4,
+      outputTokens: chartColors.chart5,
+    }),
+    [chartColors],
+  )
 
   const load = () => {
     setLoading(true)
@@ -184,14 +194,9 @@ export function GenericSourceView({
       return denom > 0 ? cr / denom : null
     })()
 
-  const axis = isDark ? '#64748b' : '#94a3b8'
-  const grid = isDark ? '#1e293b' : '#e2e8f0'
-  const tipBg = isDark ? '#0f172a' : '#ffffff'
-  const tipBorder = isDark ? '#334155' : '#e2e8f0'
-
   if (loading) {
     return (
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/40 dark:bg-slate-900/40 p-8 text-sm text-slate-500">
+      <div className="rounded-xl border border-line bg-surface/40 p-8 text-sm text-fg-muted">
         加载插件数据…
       </div>
     )
@@ -200,7 +205,7 @@ export function GenericSourceView({
   if (error || !data) {
     return (
       <div className="space-y-4">
-        <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 p-4 text-sm text-amber-800 dark:text-amber-200">
+        <div className="rounded-xl border border-warning-border bg-warning-soft p-4 text-sm text-warning">
           <p className="font-medium">{error || '暂无数据'}</p>
           {hint && <p className="mt-1 text-xs opacity-80">{hint}</p>}
         </div>
@@ -208,8 +213,8 @@ export function GenericSourceView({
           type="button"
           onClick={syncPlugin}
           disabled={syncing}
-          className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm
-            hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+          className="rounded-lg border border-line bg-surface-2 px-4 py-2 text-sm
+            hover:bg-surface disabled:opacity-50"
         >
           {syncing ? '导出中…' : '从本机数据源重新导出'}
         </button>
@@ -221,10 +226,10 @@ export function GenericSourceView({
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+          <h2 className="text-sm font-semibold text-fg">
             {data.title || pluginId}
           </h2>
-          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500 font-mono">
+          <p className="mt-1 text-xs text-fg-faint font-mono">
             plugin={pluginId}
             {data.generatedAt ? ` · generated ${data.generatedAt}` : ''}
           </p>
@@ -241,8 +246,8 @@ export function GenericSourceView({
             type="button"
             onClick={syncPlugin}
             disabled={syncing}
-            className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs
-              hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+            className="rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-xs
+              hover:bg-surface disabled:opacity-50"
           >
             {syncing ? '导出中…' : '重新导出'}
           </button>
@@ -250,7 +255,7 @@ export function GenericSourceView({
       </div>
 
       {data.disclaimer && (
-        <p className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900/50 px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
+        <p className="rounded-lg border border-line bg-surface/50 px-3 py-2 text-xs text-fg-muted">
           {data.disclaimer}
         </p>
       )}
@@ -260,13 +265,13 @@ export function GenericSourceView({
           label="Requests"
           value={fmtInt(n(totals?.requests))}
           sub={totals?.ok != null ? `ok ${fmtInt(n(totals.ok))}` : undefined}
-          accent="border-l-emerald-400"
+          accent="border-l-accent"
         />
         <KPICard
           label="Total Tokens"
           value={fmtTokens(n(totals?.total_tokens))}
           sub="input + cache + output"
-          accent="border-l-sky-400"
+          accent="border-l-info"
         />
         <KPICard
           label="Cache Read"
@@ -274,57 +279,57 @@ export function GenericSourceView({
           sub={
             cacheHit == null ? undefined : `hit ${(cacheHit * 100).toFixed(1)}%`
           }
-          accent="border-l-blue-500"
+          accent="border-l-info"
         />
         <KPICard
           label="Output"
           value={fmtTokens(n(totals?.output_tokens))}
           sub={`plain IO ${fmtTokens(n(totals?.input_tokens) + n(totals?.output_tokens))}`}
-          accent="border-l-violet-400"
+          accent="border-l-violet"
         />
       </div>
 
-      <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/40 p-4">
-        <h3 className="mb-3 text-xs font-medium uppercase tracking-widest text-slate-400">
+      <section className="rounded-xl border border-line bg-surface/40 p-4">
+        <h3 className="mb-3 text-xs font-medium uppercase tracking-widest text-fg-faint">
           按日 Token
         </h3>
         {chartData.length === 0 ? (
-          <p className="text-sm text-slate-500">暂无按日数据</p>
+          <p className="text-sm text-fg-muted">暂无按日数据</p>
         ) : (
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={grid} vertical={false} />
-                <XAxis dataKey="date" tick={{ fill: axis, fontSize: 11 }} />
-                <YAxis tick={{ fill: axis, fontSize: 11 }} tickFormatter={fmtTokens} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
+                <XAxis dataKey="date" tick={{ fill: chartColors.tick, fontSize: 11 }} />
+                <YAxis tick={{ fill: chartColors.tick, fontSize: 11 }} tickFormatter={fmtTokens} />
                 <Tooltip
                   contentStyle={{
-                    background: tipBg,
-                    border: `1px solid ${tipBorder}`,
+                    background: chartColors.surface,
+                    border: `1px solid ${chartColors.border}`,
                     borderRadius: 8,
                     fontSize: 12,
                   }}
                 />
                 <Legend />
-                <Bar dataKey="cacheRead" stackId="t" fill="#3b82f6" name="Cache Read" />
-                <Bar dataKey="inputCacheWrite" stackId="t" fill="#22c55e" name="Cache Write" />
-                <Bar dataKey="inputNoCache" stackId="t" fill="#f97316" name="Input" />
-                <Bar dataKey="outputTokens" stackId="t" fill="#a78bfa" name="Output" />
+                <Bar dataKey="cacheRead" stackId="t" fill={barColors.cacheRead} name="Cache Read" />
+                <Bar dataKey="inputCacheWrite" stackId="t" fill={barColors.inputCacheWrite} name="Cache Write" />
+                <Bar dataKey="inputNoCache" stackId="t" fill={barColors.inputNoCache} name="Input" />
+                <Bar dataKey="outputTokens" stackId="t" fill={barColors.outputTokens} name="Output" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         )}
       </section>
 
-      <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/40 overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">
-          <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400">
+      <section className="rounded-xl border border-line bg-surface/40 overflow-hidden">
+        <div className="px-4 py-3 border-b border-line">
+          <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
             按模型
           </h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-xs uppercase tracking-wider text-slate-400 bg-slate-50/80 dark:bg-slate-950/50">
+            <thead className="text-xs uppercase tracking-wider text-fg-faint bg-surface-2">
               <tr>
                 <th className="text-left px-4 py-2 font-medium">源模型</th>
                 <th className="text-left px-4 py-2 font-medium">映射键</th>
@@ -347,13 +352,13 @@ export function GenericSourceView({
                 return (
                   <tr
                     key={m.model}
-                    className="border-t border-slate-100 dark:border-slate-800/80"
+                    className="border-t border-line-subtle"
                   >
                     <td className="px-4 py-2 font-mono text-xs">{m.model}</td>
-                    <td className="px-4 py-2 font-mono text-xs text-emerald-600 dark:text-emerald-400">
+                    <td className="px-4 py-2 font-mono text-xs text-accent">
                       {m.cursorModel || '—'}
                       {m.mapSource ? (
-                        <span className="ml-1 text-[10px] text-slate-400">
+                        <span className="ml-1 text-[10px] text-fg-faint">
                           ({m.mapSource})
                         </span>
                       ) : null}
@@ -375,7 +380,7 @@ export function GenericSourceView({
               })}
               {(data.byModel ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-6 text-center text-fg-muted">
                     暂无模型数据
                   </td>
                 </tr>

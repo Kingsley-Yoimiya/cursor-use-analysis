@@ -118,20 +118,20 @@ export function ModelLeaderboard({
   })
 
   const SortIcon = ({ col }: { col: SortKey }) => {
-    if (sortKey !== col) return <span className="ml-1 text-slate-300 dark:text-slate-700">↕</span>
-    return <span className="ml-1 text-emerald-500">{sortAsc ? '↑' : '↓'}</span>
+    if (sortKey !== col) return <span className="ml-1 text-fg-faint">↕</span>
+    return <span className="ml-1 text-accent">{sortAsc ? '↑' : '↓'}</span>
   }
 
-  const thClass = 'px-4 py-3 text-left text-[11px] font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500 select-none'
-  const thSortClass = `${thClass} cursor-pointer hover:text-slate-600 dark:hover:text-slate-300 transition-colors`
+  const thClass = 'px-4 py-3 text-left text-[11px] font-medium uppercase tracking-widest text-fg-faint select-none'
+  const thSortClass = `${thClass} cursor-pointer hover:text-fg transition-colors`
 
   if (loading) {
     return (
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-5">
-        <div className="h-6 w-32 animate-pulse rounded bg-slate-100 dark:bg-slate-800 mb-4" />
+      <div className="rounded-xl border border-line bg-surface/60 p-5">
+        <div className="h-6 w-32 animate-pulse rounded bg-surface-2 mb-4" />
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-10 animate-pulse rounded bg-slate-50 dark:bg-slate-800/40" />
+            <div key={i} className="h-10 animate-pulse rounded bg-surface-2" />
           ))}
         </div>
       </div>
@@ -140,20 +140,20 @@ export function ModelLeaderboard({
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-600 dark:text-red-400">
+      <div className="rounded-xl border border-danger-border bg-danger-soft p-4 text-sm text-danger">
         加载模型数据失败：{error}
       </div>
     )
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-sm dark:shadow-lg overflow-hidden">
+    <div className="rounded-xl border border-line bg-surface/60 shadow-theme overflow-hidden">
       {/* 标题栏 */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
-        <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-line-subtle">
+        <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
           模型排行榜
         </h3>
-        <span className="text-[11px] text-slate-400 dark:text-slate-600 font-mono">
+        <span className="text-[11px] text-fg-faint font-mono">
           {sorted.length} 个模型
         </span>
       </div>
@@ -162,7 +162,7 @@ export function ModelLeaderboard({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-slate-50 dark:bg-slate-800/50">
+            <tr className="bg-surface-2">
               <th className={thClass}>#</th>
               <th className={thClass}>模型</th>
               <th className={thSortClass} onClick={() => handleSort('usd')}>
@@ -176,31 +176,31 @@ export function ModelLeaderboard({
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          <tbody className="divide-y divide-line-subtle">
             {sorted.map((m, i) => {
               const hitRate = calcCacheHitRate(m.tokens)
               const hitRateColor =
                 hitRate > 0.7
-                  ? 'text-emerald-600 dark:text-emerald-400'
+                  ? 'text-accent'
                   : hitRate > 0.5
-                  ? 'text-amber-600 dark:text-amber-400'
+                  ? 'text-warning'
                   : hitRate > 0
-                  ? 'text-red-600 dark:text-red-400'
-                  : 'text-slate-400 dark:text-slate-600'
+                  ? 'text-danger'
+                  : 'text-fg-faint'
 
               const rankBadge =
                 i === 0
-                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
+                  ? 'bg-warning-soft text-warning'
                   : i === 1
-                  ? 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                  ? 'bg-surface-2 text-fg-muted'
                   : i === 2
-                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400'
-                  : 'bg-transparent text-slate-400 dark:text-slate-600'
+                  ? 'bg-accent-soft text-accent-muted'
+                  : 'bg-transparent text-fg-faint'
 
               return (
                 <tr
                   key={m.model}
-                  className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors"
+                  className="hover:bg-surface-2 transition-colors"
                 >
                   <td className="px-4 py-3 w-10">
                     <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${rankBadge}`}>
@@ -208,27 +208,27 @@ export function ModelLeaderboard({
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="font-mono text-xs text-slate-700 dark:text-slate-200 break-all">
+                    <span className="font-mono text-xs text-fg break-all">
                       {m.model}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-mono text-sm font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                  <td className="px-4 py-3 font-mono text-sm font-semibold text-accent whitespace-nowrap">
                     {fmtUsd(m.estimatedUsd)}
                   </td>
-                  <td className="px-4 py-3 font-mono text-sm text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                  <td className="px-4 py-3 font-mono text-sm text-fg whitespace-nowrap">
                     {fmtInt(m.requests)}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {/* 进度条 */}
-                      <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 min-w-[60px]">
+                      <div className="flex-1 h-1.5 rounded-full bg-surface-2 min-w-[60px]">
                         <div
                           className={`h-full rounded-full ${
                             hitRate > 0.7
-                              ? 'bg-emerald-500'
+                              ? 'bg-accent'
                               : hitRate > 0.5
-                              ? 'bg-amber-500'
-                              : 'bg-red-500'
+                              ? 'bg-warning'
+                              : 'bg-danger'
                           }`}
                           style={{ width: `${Math.min(hitRate * 100, 100)}%` }}
                         />
@@ -246,7 +246,7 @@ export function ModelLeaderboard({
       </div>
 
       {sorted.length === 0 && (
-        <div className="px-5 py-8 text-center text-sm text-slate-400 dark:text-slate-600">
+        <div className="px-5 py-8 text-center text-sm text-fg-faint">
           暂无数据
         </div>
       )}

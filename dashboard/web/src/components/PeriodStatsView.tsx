@@ -16,7 +16,7 @@ import {
   Line,
   Cell,
 } from 'recharts'
-import { useIsDark } from '../context/ThemeContext'
+import { useChartColors, useTheme } from '../context/ThemeContext'
 
 // ────────── 类型 ──────────
 
@@ -90,18 +90,12 @@ interface PeriodStatsResponse {
 type ViewMode = 'calendar' | 'billing'
 
 const POOLS = ['Auto', 'FirstParty', 'API'] as const
-const POOL_COLORS: Record<(typeof POOLS)[number], string> = {
-  Auto: '#f59e0b',
-  FirstParty: '#8b5cf6',
-  API: '#06b6d4',
-}
 const POOL_LABELS: Record<(typeof POOLS)[number], string> = {
   Auto: 'Auto',
   FirstParty: 'First-party',
   API: 'API',
 }
 
-const PIE_OTHER_COLOR = { light: '#94a3b8', dark: '#475569' }
 const MODEL_HUES = [160, 270, 200, 38, 330, 220, 15, 280, 120, 350, 190, 45, 300, 80, 250, 170, 310, 55, 230, 100]
 
 function modelSeriesColor(index: number, isDark: boolean): string {
@@ -132,9 +126,9 @@ function barLayout(compact: boolean, periodCount: number) {
   }
 }
 
-const tooltipBoxStyle = (isDark: boolean, gridStroke: string) => ({
-  background: isDark ? '#0f172a' : '#fff',
-  border: `1px solid ${gridStroke}`,
+const tooltipBoxStyle = (surface: string, border: string) => ({
+  background: surface,
+  border: `1px solid ${border}`,
   borderRadius: 8,
   fontSize: 12,
 })
@@ -168,10 +162,10 @@ function fmtChange(n: number | null | undefined): string {
 }
 
 function changeColor(n: number | null | undefined): string {
-  if (n == null) return 'text-slate-400'
-  if (n > 0.05) return 'text-red-500 dark:text-red-400'
-  if (n < -0.05) return 'text-emerald-600 dark:text-emerald-400'
-  return 'text-slate-500 dark:text-slate-400'
+  if (n == null) return 'text-fg-faint'
+  if (n > 0.05) return 'text-danger'
+  if (n < -0.05) return 'text-accent'
+  return 'text-fg-muted'
 }
 
 function fmtShareDelta(n: number | null | undefined): string {
@@ -226,8 +220,8 @@ function buildModelStackedBarData(
   topN: number,
   isDark: boolean,
   metric: 'cost' | 'tokens',
+  otherColor: string,
 ) {
-  const otherColor = isDark ? PIE_OTHER_COLOR.dark : PIE_OTHER_COLOR.light
   const allModels = new Set<string>()
   const modelTotals = new Map<string, number>()
   const modelColorMap = new Map<string, string>()
@@ -293,15 +287,15 @@ function buildModelStackedBarData(
 function ModelStackTooltip({
   active,
   label,
-  isDark,
-  gridStroke,
+  surface,
+  border,
   metric,
   bars,
 }: {
   active?: boolean
   label?: string
-  isDark: boolean
-  gridStroke: string
+  surface: string
+  border: string
   metric: 'cost' | 'tokens'
   bars: ModelStackBarRow[]
 }) {
@@ -321,26 +315,26 @@ function ModelStackTooltip({
 
   return (
     <div
-      className="rounded-lg px-3 py-2 shadow-xl text-xs min-w-[140px] max-w-[220px]"
+      className="rounded-lg px-3 py-2 shadow-theme text-xs min-w-[140px] max-w-[220px]"
       style={{
-        background: isDark ? '#0f172a' : '#fff',
-        border: `1px solid ${gridStroke}`,
+        background: surface,
+        border: `1px solid ${border}`,
       }}
     >
-      <p className="mb-1.5 font-medium text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="mb-1.5 font-medium text-fg-muted">{label}</p>
       {items.map((m) => (
         <div key={m.key} className="flex justify-between gap-3 mb-0.5">
           <span className="truncate" style={{ color: m.color }} title={m.key}>
             {m.key}
           </span>
-          <span className="font-mono shrink-0 text-slate-700 dark:text-slate-300">
+          <span className="font-mono shrink-0 text-fg">
             {fmtVal(m.value)}
           </span>
         </div>
       ))}
-      <div className="mt-1.5 border-t border-slate-200 dark:border-slate-700 pt-1 flex justify-between">
-        <span className="text-slate-400">合计</span>
-        <span className="font-mono font-medium text-slate-800 dark:text-slate-100">
+      <div className="mt-1.5 border-t border-line pt-1 flex justify-between">
+        <span className="text-fg-faint">合计</span>
+        <span className="font-mono font-medium text-fg">
           {fmtVal(total)}
         </span>
       </div>
@@ -356,7 +350,8 @@ interface ModelStackedBarChartProps {
   barsLayout: ReturnType<typeof barLayout>
   gridStroke: string
   tickFill: string
-  isDark: boolean
+  surface: string
+  border: string
 }
 
 function ModelStackedBarChart({
@@ -367,7 +362,8 @@ function ModelStackedBarChart({
   barsLayout,
   gridStroke,
   tickFill,
-  isDark,
+  surface,
+  border,
 }: ModelStackedBarChartProps) {
   return (
     <BarChart data={bars} barCategoryGap={barsLayout.categoryGap}>
@@ -381,8 +377,8 @@ function ModelStackedBarChart({
       <Tooltip
         content={
           <ModelStackTooltip
-            isDark={isDark}
-            gridStroke={gridStroke}
+            surface={surface}
+            border={border}
             metric={metric}
             bars={bars}
           />
@@ -414,7 +410,7 @@ function ModelStackedBarChart({
 // ────────── 子组件 ──────────
 
 function ChangeBadge({ value, suffix = '' }: { value: number | null | undefined; suffix?: string }) {
-  if (value == null) return <span className="text-slate-400 dark:text-slate-600 text-xs">—</span>
+  if (value == null) return <span className="text-fg-faint text-xs">—</span>
   return (
     <span className={`text-xs font-mono ${changeColor(value)}`}>
       {fmtChange(value)}{suffix}
@@ -426,29 +422,29 @@ interface PeriodCardProps {
   period: PeriodEntry
 }
 
-function PoolBreakdown({ period }: { period: PeriodEntry }) {
+function PoolBreakdown({ period, poolColors }: { period: PeriodEntry; poolColors: Record<(typeof POOLS)[number], string> }) {
   const costShare = getCostShare(period)
   const tokenShare = getTokenShare(period)
   const poolChanges = period.changes?.poolChanges
 
   return (
     <div className="space-y-2">
-      <p className="text-[10px] uppercase tracking-wider text-slate-400">池子分布 Auto / First-party / API</p>
+      <p className="text-[10px] uppercase tracking-wider text-fg-faint">池子分布 Auto / First-party / API</p>
       <div className="grid grid-cols-3 gap-2 text-[11px]">
         {POOLS.map((pool) => (
           <div
             key={pool}
-            className="rounded-lg border border-slate-100 dark:border-slate-800 px-2 py-2"
-            style={{ borderLeftWidth: 3, borderLeftColor: POOL_COLORS[pool] }}
+            className="rounded-lg border border-line-subtle px-2 py-2"
+            style={{ borderLeftWidth: 3, borderLeftColor: poolColors[pool] }}
           >
-            <p className="font-medium text-slate-600 dark:text-slate-300">{POOL_LABELS[pool]}</p>
-            <p className="font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
+            <p className="font-medium text-fg">{POOL_LABELS[pool]}</p>
+            <p className="font-mono text-accent mt-0.5">
               {fmtUsd(period.costByPool[pool])}
             </p>
-            <p className="font-mono text-sky-600 dark:text-sky-400 text-[10px]">
+            <p className="font-mono text-info text-[10px]">
               {fmtTokens(period.tokensByPool[pool])}
             </p>
-            <p className="text-slate-400 mt-1">
+            <p className="text-fg-faint mt-1">
               花费 {fmtPct(costShare[pool])} · Token {fmtPct(tokenShare[pool])}
             </p>
             {poolChanges?.[pool] && (
@@ -456,7 +452,7 @@ function PoolBreakdown({ period }: { period: PeriodEntry }) {
                 <span className={changeColor(poolChanges[pool].costPct)}>
                   {fmtChange(poolChanges[pool].costPct)}
                 </span>
-                <span className="text-slate-400">·</span>
+                <span className="text-fg-faint">·</span>
                 <span className={changeColor(poolChanges[pool].costShareDelta)}>
                   {fmtShareDelta(poolChanges[pool].costShareDelta)}
                 </span>
@@ -469,21 +465,21 @@ function PoolBreakdown({ period }: { period: PeriodEntry }) {
   )
 }
 
-function PeriodCard({ period }: PeriodCardProps) {
+function PeriodCard({ period, poolColors }: PeriodCardProps & { poolColors: Record<(typeof POOLS)[number], string> }) {
   return (
-    <article className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-5 shadow-sm space-y-4">
+    <article className="rounded-xl border border-line bg-surface/60 p-5 shadow-theme space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+          <h3 className="text-sm font-semibold text-fg">
             {period.label}
           </h3>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">
+          <p className="text-[11px] text-fg-faint font-mono mt-0.5">
             {period.startDate} → {period.endDate}
           </p>
         </div>
         {period.changes && (
           <div className="text-right space-y-0.5">
-            <p className="text-[10px] uppercase tracking-wider text-slate-400">环比</p>
+            <p className="text-[10px] uppercase tracking-wider text-fg-faint">环比</p>
             <p className="text-xs">
               花费 <ChangeBadge value={period.changes.costPct} />
             </p>
@@ -496,20 +492,20 @@ function PeriodCard({ period }: PeriodCardProps) {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-slate-400">花费</p>
-          <p className="text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">
+          <p className="text-[10px] uppercase tracking-wider text-fg-faint">花费</p>
+          <p className="text-lg font-bold font-mono text-accent">
             {fmtUsd(period.totalCost)}
           </p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-slate-400">Token</p>
-          <p className="text-lg font-bold font-mono text-sky-600 dark:text-sky-400">
+          <p className="text-[10px] uppercase tracking-wider text-fg-faint">Token</p>
+          <p className="text-lg font-bold font-mono text-info">
             {fmtTokens(period.totalTokens)}
           </p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-slate-400">Fast 占比</p>
-          <p className="text-lg font-bold font-mono text-violet-600 dark:text-violet-400">
+          <p className="text-[10px] uppercase tracking-wider text-fg-faint">Fast 占比</p>
+          <p className="text-lg font-bold font-mono text-violet">
             {fmtPct(period.fastRatio)}
           </p>
           {period.changes && (
@@ -517,35 +513,35 @@ function PeriodCard({ period }: PeriodCardProps) {
           )}
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-slate-400">请求数</p>
-          <p className="text-lg font-bold font-mono text-amber-600 dark:text-amber-400">
+          <p className="text-[10px] uppercase tracking-wider text-fg-faint">请求数</p>
+          <p className="text-lg font-bold font-mono text-warning">
             {period.totalRows.toLocaleString()}
           </p>
         </div>
       </div>
 
-      <PoolBreakdown period={period} />
+      <PoolBreakdown period={period} poolColors={poolColors} />
 
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-slate-400 mb-2">Top 3 模型（按花费）</p>
+        <p className="text-[10px] uppercase tracking-wider text-fg-faint mb-2">Top 3 模型（按花费）</p>
         {period.topModels.length === 0 ? (
-          <p className="text-xs text-slate-400">无数据</p>
+          <p className="text-xs text-fg-faint">无数据</p>
         ) : (
           <ol className="space-y-1.5">
             {period.topModels.map((m, i) => (
               <li
                 key={m.model}
-                className="flex items-center justify-between gap-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800/50 px-3 py-2"
+                className="flex items-center justify-between gap-2 text-xs rounded-lg bg-surface-2 px-3 py-2"
               >
                 <span className="flex items-center gap-2 min-w-0">
-                  <span className="shrink-0 w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-line flex items-center justify-center text-[10px] font-bold text-fg-muted">
                     {i + 1}
                   </span>
-                  <span className="truncate font-medium text-slate-700 dark:text-slate-200">
+                  <span className="truncate font-medium text-fg">
                     {m.model}
                   </span>
                 </span>
-                <span className="shrink-0 font-mono text-slate-500 dark:text-slate-400">
+                <span className="shrink-0 font-mono text-fg-muted">
                   {fmtUsd(m.cost)} · {fmtTokens(m.tokens)}
                 </span>
               </li>
@@ -560,7 +556,16 @@ function PeriodCard({ period }: PeriodCardProps) {
 // ────────── 主组件 ──────────
 
 export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
-  const isDark = useIsDark()
+  const { isDark } = useTheme()
+  const chartColors = useChartColors()
+  const poolColors = useMemo(
+    (): Record<(typeof POOLS)[number], string> => ({
+      Auto: chartColors.poolAuto,
+      FirstParty: chartColors.poolFirst,
+      API: chartColors.poolApi,
+    }),
+    [chartColors],
+  )
   const [data, setData] = useState<PeriodStatsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -632,8 +637,9 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
       topModelCount,
       isDark,
       'cost',
+      chartColors.muted,
     )
-  }, [activeGroup, viewMode, topModelCount, isDark])
+  }, [activeGroup, viewMode, topModelCount, isDark, chartColors.muted])
 
   const modelTokenStackedBarData = useMemo(() => {
     if (!activeGroup) return { bars: [], layerCount: 0, uniqueModelCount: 0 }
@@ -643,8 +649,9 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
       topModelCount,
       isDark,
       'tokens',
+      chartColors.muted,
     )
-  }, [activeGroup, viewMode, topModelCount, isDark])
+  }, [activeGroup, viewMode, topModelCount, isDark, chartColors.muted])
 
   const poolChartData = useMemo(() => {
     if (!activeGroup) return []
@@ -669,16 +676,16 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
     })
   }, [activeGroup, viewMode])
 
-  const gridStroke = isDark ? '#334155' : '#e2e8f0'
-  const tickFill = isDark ? '#64748b' : '#94a3b8'
+  const gridStroke = chartColors.grid
+  const tickFill = chartColors.tick
 
   if (loading) {
     return (
       <div className="space-y-4">
-        <div className="h-12 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900/60" />
+        <div className="h-12 animate-pulse rounded-xl bg-surface-2 border border-line" />
         <div className="grid gap-4 md:grid-cols-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-48 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900/60" />
+            <div key={i} className="h-48 animate-pulse rounded-xl bg-surface-2 border border-line" />
           ))}
         </div>
       </div>
@@ -687,7 +694,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-600 dark:text-red-400">
+      <div className="rounded-xl border border-danger-border bg-danger-soft p-4 text-sm text-danger">
         加载周期统计失败：{error}
       </div>
     )
@@ -704,15 +711,15 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
   return (
     <div className="space-y-6">
       {/* 控制栏 */}
-      <section className="flex flex-wrap items-center gap-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/40 dark:bg-slate-900/40 px-4 py-3">
-        <div className="flex gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-0.5">
+      <section className="flex flex-wrap items-center gap-4 rounded-xl border border-line bg-surface/40 px-4 py-3">
+        <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-0.5">
           <button
             type="button"
             onClick={() => setViewMode('billing')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
               viewMode === 'billing'
-                ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                ? 'bg-surface text-violet'
+                : 'text-fg-muted hover:text-fg hover:bg-surface'
             }`}
           >
             账单周期
@@ -722,15 +729,15 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
             onClick={() => setViewMode('calendar')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
               viewMode === 'calendar'
-                ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                ? 'bg-surface text-violet'
+                : 'text-fg-muted hover:text-fg hover:bg-surface'
             }`}
           >
             自然月
           </button>
         </div>
 
-        <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <label className="flex items-center gap-2 text-xs text-fg-muted">
           账单起始日
           <input
             type="number"
@@ -743,8 +750,8 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                 setBillingCycleDay(Math.min(dayMax, Math.max(dayMin, Math.round(n))))
               }
             }}
-            className="w-16 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-700 dark:text-slate-200
-                       focus:outline-none focus:border-violet-500"
+            className="w-16 bg-surface-2 border border-line rounded-lg px-2 py-1 text-xs text-fg
+                       focus:outline-none focus:border-violet"
           />
           日
         </label>
@@ -752,12 +759,12 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
         <button
           type="button"
           onClick={() => setBillingCycleDay(data.defaultBillingCycleDay ?? 23)}
-          className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 underline underline-offset-2"
+          className="text-xs text-fg-faint hover:text-fg underline underline-offset-2"
         >
           恢复默认 ({data.defaultBillingCycleDay ?? 23})
         </button>
 
-        <span className="ml-auto text-xs text-slate-400 dark:text-slate-600 font-mono">
+        <span className="ml-auto text-xs text-fg-faint font-mono">
           {activeGroup.periods.length} 个周期 · {data.ms ?? 0}ms
         </span>
       </section>
@@ -766,16 +773,16 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
       {chartData.length > 0 && poolChartData.length > 0 && (
         <>
           <section className="space-y-3">
-            <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400">
+            <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
               花费趋势
             </h3>
             <div className={trendGridClass(compactTrendLayout)}>
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
+              <div className="rounded-xl border border-line bg-surface/60 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                  <h4 className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                  <h4 className="text-[11px] font-medium text-fg-muted">
                     按模型堆叠（Top {topModelCount}）
                   </h4>
-                  <div className="flex gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-0.5">
+                  <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-0.5">
                     {([3, 5] as const).map((n) => (
                       <button
                         key={n}
@@ -783,8 +790,8 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                         onClick={() => setTopModelCount(n)}
                         className={`px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
                           topModelCount === n
-                            ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
-                            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                            ? 'bg-accent-soft text-accent'
+                            : 'text-fg-muted hover:text-fg hover:bg-surface'
                         }`}
                       >
                         Top {n}
@@ -793,7 +800,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                   </div>
                 </div>
                 {modelStackedBarData.bars.length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-16">无数据</p>
+                  <p className="text-xs text-fg-faint text-center py-16">无数据</p>
                 ) : (
                   <div className={compactChartShell(compactTrendLayout)}>
                     <ResponsiveContainer width="100%" height={bars.height}>
@@ -805,19 +812,20 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                         barsLayout={bars}
                         gridStroke={gridStroke}
                         tickFill={tickFill}
-                        isDark={isDark}
+                        surface={chartColors.surface}
+                        border={chartColors.border}
                       />
                     </ResponsiveContainer>
                   </div>
                 )}
               </div>
 
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
-                <h4 className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-4">
+              <div className="rounded-xl border border-line bg-surface/60 p-4">
+                <h4 className="text-[11px] font-medium text-fg-muted mb-4">
                   按模型堆叠（Token Top {topModelCount}）
                 </h4>
                 {modelTokenStackedBarData.bars.length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-16">无数据</p>
+                  <p className="text-xs text-fg-faint text-center py-16">无数据</p>
                 ) : (
                   <div className={compactChartShell(compactTrendLayout)}>
                     <ResponsiveContainer width="100%" height={bars.height}>
@@ -829,7 +837,8 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                         barsLayout={bars}
                         gridStroke={gridStroke}
                         tickFill={tickFill}
-                        isDark={isDark}
+                        surface={chartColors.surface}
+                        border={chartColors.border}
                       />
                     </ResponsiveContainer>
                   </div>
@@ -839,12 +848,12 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400">
+            <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
               Token 趋势
             </h3>
             <div className={trendGridClass(compactTrendLayout)}>
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
-                <h4 className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-4">
+              <div className="rounded-xl border border-line bg-surface/60 p-4">
+                <h4 className="text-[11px] font-medium text-fg-muted mb-4">
                   总量 & Fast 比例
                 </h4>
                 <div className={compactChartShell(compactTrendLayout)}>
@@ -865,14 +874,14 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                         tickFormatter={(v) => `${v}M`}
                         width={bars.yAxisWidth}
                       />
-                      <Tooltip contentStyle={tooltipBoxStyle(isDark, gridStroke)} />
+                      <Tooltip contentStyle={tooltipBoxStyle(chartColors.surface, chartColors.border)} />
                       <Legend wrapperStyle={{ fontSize: 10 }} />
                       <Line
                         yAxisId="left"
                         type="monotone"
                         dataKey="fastRatio"
                         name="Fast %"
-                        stroke="#8b5cf6"
+                        stroke={chartColors.poolFirst}
                         strokeWidth={2}
                         dot={{ r: 3 }}
                       />
@@ -881,7 +890,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                         type="monotone"
                         dataKey="tokens"
                         name="Token (M)"
-                        stroke="#0ea5e9"
+                        stroke={chartColors.poolApi}
                         strokeWidth={2}
                         dot={{ r: 3 }}
                       />
@@ -890,8 +899,8 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-4">
-                <h4 className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-4">
+              <div className="rounded-xl border border-line bg-surface/60 p-4">
+                <h4 className="text-[11px] font-medium text-fg-muted mb-4">
                   Auto / First-party / API 池（Token）
                 </h4>
                 <div className={compactChartShell(compactTrendLayout)}>
@@ -904,27 +913,27 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                         tickFormatter={(v) => `${v}M`}
                         width={bars.yAxisWidth}
                       />
-                      <Tooltip contentStyle={tooltipBoxStyle(isDark, gridStroke)} />
+                      <Tooltip contentStyle={tooltipBoxStyle(chartColors.surface, chartColors.border)} />
                       <Legend wrapperStyle={{ fontSize: 10 }} />
                       <Bar
                         dataKey="tokensAuto"
                         name="Auto"
                         stackId="pool-tokens"
-                        fill={POOL_COLORS.Auto}
+                        fill={poolColors.Auto}
                         maxBarSize={bars.maxBarSize}
                       />
                       <Bar
                         dataKey="tokensFirstParty"
                         name="First-party"
                         stackId="pool-tokens"
-                        fill={POOL_COLORS.FirstParty}
+                        fill={poolColors.FirstParty}
                         maxBarSize={bars.maxBarSize}
                       />
                       <Bar
                         dataKey="tokensAPI"
                         name="API"
                         stackId="pool-tokens"
-                        fill={POOL_COLORS.API}
+                        fill={poolColors.API}
                         maxBarSize={bars.maxBarSize}
                         radius={[4, 4, 0, 0]}
                       />
@@ -938,11 +947,11 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
       )}
 
       {/* 汇总表 */}
-      <section className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+      <section className="rounded-xl border border-line overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-900/80 text-left text-slate-400 uppercase tracking-wider">
+              <tr className="bg-surface-2 text-left text-fg-faint uppercase tracking-wider">
                 <th className="px-4 py-3 font-medium">周期</th>
                 <th className="px-4 py-3 font-medium text-right">花费</th>
                 <th className="px-4 py-3 font-medium text-right">环比</th>
@@ -955,20 +964,20 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                 <th className="px-4 py-3 font-medium">Top 3 模型</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tbody className="divide-y divide-line-subtle">
               {[...activeGroup.periods].reverse().map((p) => {
                 const costShare = getCostShare(p)
                 const poolChanges = p.changes?.poolChanges
                 return (
                 <tr
                   key={p.key}
-                  className="hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-colors"
+                  className="hover:bg-surface-2 transition-colors"
                 >
                   <td className="px-4 py-3">
-                    <p className="font-medium text-slate-700 dark:text-slate-200">{p.label}</p>
-                    <p className="text-[10px] text-slate-400 font-mono">{p.startDate} ~ {p.endDate}</p>
+                    <p className="font-medium text-fg">{p.label}</p>
+                    <p className="text-[10px] text-fg-faint font-mono">{p.startDate} ~ {p.endDate}</p>
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                  <td className="px-4 py-3 text-right font-mono text-accent">
                     {fmtUsd(p.totalCost)}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -976,7 +985,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                   </td>
                   <td className="px-4 py-3 text-right font-mono">{fmtTokens(p.totalTokens)}</td>
                   <td className="px-4 py-3 text-right">
-                    <span className="font-mono" style={{ color: POOL_COLORS.Auto }}>{fmtPct(costShare.Auto)}</span>
+                    <span className="font-mono" style={{ color: poolColors.Auto }}>{fmtPct(costShare.Auto)}</span>
                     {poolChanges?.Auto && (
                       <p className={`text-[10px] font-mono ${changeColor(poolChanges.Auto.costShareDelta)}`}>
                         {fmtShareDelta(poolChanges.Auto.costShareDelta)}
@@ -984,7 +993,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <span className="font-mono" style={{ color: POOL_COLORS.FirstParty }}>{fmtPct(costShare.FirstParty)}</span>
+                    <span className="font-mono" style={{ color: poolColors.FirstParty }}>{fmtPct(costShare.FirstParty)}</span>
                     {poolChanges?.FirstParty && (
                       <p className={`text-[10px] font-mono ${changeColor(poolChanges.FirstParty.costShareDelta)}`}>
                         {fmtShareDelta(poolChanges.FirstParty.costShareDelta)}
@@ -992,7 +1001,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <span className="font-mono" style={{ color: POOL_COLORS.API }}>{fmtPct(costShare.API)}</span>
+                    <span className="font-mono" style={{ color: poolColors.API }}>{fmtPct(costShare.API)}</span>
                     {poolChanges?.API && (
                       <p className={`text-[10px] font-mono ${changeColor(poolChanges.API.costShareDelta)}`}>
                         {fmtShareDelta(poolChanges.API.costShareDelta)}
@@ -1006,7 +1015,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                       {p.topModels.map((m) => (
                         <span
                           key={m.model}
-                          className="inline-block rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] text-slate-600 dark:text-slate-300"
+                          className="inline-block rounded-md bg-surface-2 px-2 py-0.5 text-[10px] text-fg-muted"
                           title={`${fmtUsd(m.cost)} · ${fmtTokens(m.tokens)}`}
                         >
                           {m.model}
@@ -1024,7 +1033,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
       {/* 周期卡片 */}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {[...activeGroup.periods].reverse().map((p) => (
-          <PeriodCard key={p.key} period={p} />
+          <PeriodCard key={p.key} period={p} poolColors={poolColors} />
         ))}
       </section>
     </div>

@@ -2,7 +2,7 @@
  * Cursor 用量面板 — 主视图
  * 阶段四：明暗主题切换 + 标签页（概览 / 模型详情）+ 分模型数据
  */
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef, useLayoutEffect } from 'react'
 import axios from 'axios'
 import { KPICards } from './components/KPICards'
 import { UsageTrendChart } from './components/UsageTrendChart'
@@ -19,7 +19,8 @@ import {
   writeMergeEnabled,
   type AddonSourceInfo,
 } from './components/MergeAddonToggle'
-import { ThemeContext } from './context/ThemeContext'
+import { ThemeProvider, useTheme } from './context/ThemeContext'
+import { ThemePalettePicker } from './components/ThemePalettePicker'
 import { DataSyncBar } from './components/DataSyncBar'
 import { mergeDailyEntries, type DailyEntry as MergeDailyEntry } from './lib/mergeDaily'
 
@@ -79,21 +80,8 @@ interface PluginCursorDailyResponse {
 
 // ────────── 主应用组件 ──────────
 
-function App() {
-  // ── 主题 (dark = 默认) ──
-  const [isDark, setIsDark] = useState<boolean>(() => {
-    const saved = localStorage.getItem('cursor-dashboard-theme')
-    return saved ? saved === 'dark' : true
-  })
-
-  useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-    localStorage.setItem('cursor-dashboard-theme', isDark ? 'dark' : 'light')
-  }, [isDark])
+function AppShell() {
+  const { isDark, toggleMode } = useTheme()
 
   // ── 标签页 ──
   const [activeTab, setActiveTab] = useState<Tab>('overview')
@@ -229,40 +217,61 @@ function App() {
     })),
   ]
 
-  return (
-    <ThemeContext.Provider value={isDark}>
-      <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 transition-colors duration-200">
+  const tabRailRef = useRef<HTMLElement>(null)
+  const tabBtnRefs = useRef<Map<Tab, HTMLButtonElement>>(new Map())
+  const [tabIndicator, setTabIndicator] = useState({ left: 4, width: 0 })
 
-        {/* 顶部导航栏 */}
-        <header className="sticky top-0 z-10 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-slate-950/90 backdrop-blur-sm px-6 py-3 md:px-10">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="inline-block h-3 w-3 rounded-full bg-emerald-400 shadow-[0_0_8px_2px_#10b98155]" />
-              <h1 className="text-base font-semibold tracking-tight text-slate-900 dark:text-white md:text-lg">
-                Cursor 用量面板
-              </h1>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-slate-400 dark:text-slate-600 font-mono hidden sm:block">
-                YTD 2026
-              </span>
-              
-              <MergeAddonToggle
-                sources={addonSources}
-                enabled={mergeEnabled}
-                onChange={setMerge}
-                compact
-              />
-              <DataSyncBar onReload={bumpRefresh} />
-              {/* 明/暗主题切换按钮 */}
+  useLayoutEffect(() => {
+    const rail = tabRailRef.current
+    const btn = tabBtnRefs.current.get(activeTab)
+    if (!rail || !btn) return
+    const update = () => {
+      setTabIndicator({
+        left: btn.offsetLeft,
+        width: btn.offsetWidth,
+      })
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(rail)
+    window.addEventListener('resize', update)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', update)
+    }
+  }, [activeTab, tabs.length])
+
+  return (
+    <div className="min-h-screen bg-canvas text-fg transition-colors duration-200">
+
+      {/* 顶部导航栏 */}
+      <header className="app-header sticky top-0 z-10 px-6 py-3 md:px-10">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-accent" />
+            <h1 className="text-base font-semibold tracking-tight text-fg md:text-lg truncate">
+              Cursor 用量面板
+            </h1>
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="text-xs text-fg-faint font-mono hidden md:block">
+              YTD 2026
+            </span>
+
+            <MergeAddonToggle
+              sources={addonSources}
+              enabled={mergeEnabled}
+              onChange={setMerge}
+              compact
+            />
+            <DataSyncBar onReload={bumpRefresh} />
+
+            <div className="toolbar-cluster">
+              <ThemePalettePicker />
               <button
-                onClick={() => setIsDark(!isDark)}
-                className="flex items-center justify-center w-8 h-8 rounded-lg
-                  border border-slate-200 dark:border-slate-700
-                  bg-slate-100 dark:bg-slate-800
-                  text-slate-600 dark:text-slate-400
-                  hover:bg-slate-200 dark:hover:bg-slate-700
-                  transition-all duration-200"
+                type="button"
+                onClick={toggleMode}
+                className="btn-icon !border-0 !bg-transparent hover:!bg-surface"
                 title={isDark ? '切换到亮色模式' : '切换到暗色模式'}
                 aria-label={isDark ? '切换到亮色模式' : '切换到暗色模式'}
               >
@@ -286,175 +295,194 @@ function App() {
               </button>
             </div>
           </div>
-        </header>
+        </div>
+      </header>
 
-        {/* 主内容区 */}
-        <main className="mx-auto max-w-screen-2xl px-4 py-6 md:px-8 md:py-8 space-y-6">
+      {/* 主内容区 */}
+      <main className="mx-auto max-w-screen-2xl px-4 py-6 md:px-8 md:py-8 space-y-6">
 
-          {/* Tab 导航 */}
-          <nav className="flex gap-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900/50 p-1">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
-                  activeTab === tab.id
-                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-sm'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
+        {/* Tab 导航 */}
+        <nav ref={tabRailRef} className="tab-rail">
+          <span
+            className="tab-rail-indicator"
+            style={{ left: tabIndicator.left, width: tabIndicator.width }}
+            aria-hidden
+          />
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              ref={(el) => {
+                if (el) tabBtnRefs.current.set(tab.id, el)
+                else tabBtnRefs.current.delete(tab.id)
+              }}
+              onClick={() => setActiveTab(tab.id)}
+              className={`tab-rail-btn ${
+                activeTab === tab.id
+                  ? 'text-fg'
+                  : 'text-fg-muted hover:text-fg'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
 
-          {/* ── 概览 Tab ── */}
-          {activeTab === 'overview' && (
-            <div className="space-y-6">
-              {mergeEnabled && addonSources.length > 0 && (
-                <p className="text-[11px] text-emerald-600/90 dark:text-emerald-400/80">
-                  已合并本地附加用量到概览（按公开单价估算）；报销 Tab 仍为主数据源。
-                </p>
+        {/* ── 概览 Tab ── */}
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            {mergeEnabled && addonSources.length > 0 && (
+              <p className="text-[11px] text-accent">
+                已合并本地附加用量到概览（按公开单价估算）；报销 Tab 仍为主数据源。
+              </p>
+            )}
+            <section>
+              <KPICards refreshKey={refreshKey} foldPluginIds={mergeSourceIds} />
+            </section>
+
+            {/* 日期范围筛选器 */}
+            <section className="flex items-center flex-wrap gap-3 rounded-xl border border-line bg-surface-2/40 px-4 py-3">
+              <span className="text-xs font-medium uppercase tracking-widest text-fg-faint shrink-0">
+                日期筛选
+              </span>
+              <label className="flex items-center gap-2 text-xs text-fg-muted">
+                开始
+                <input
+                  type="date"
+                  value={startDate}
+                  min={dateRange?.min}
+                  max={dateRange?.max}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="bg-elevated border border-line rounded-lg px-2.5 py-1.5 text-xs text-fg
+                             focus:outline-none focus:border-accent transition-colors cursor-pointer"
+                />
+              </label>
+              <span className="text-fg-faint text-xs">—</span>
+              <label className="flex items-center gap-2 text-xs text-fg-muted">
+                结束
+                <input
+                  type="date"
+                  value={endDate}
+                  min={dateRange?.min}
+                  max={dateRange?.max}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="bg-elevated border border-line rounded-lg px-2.5 py-1.5 text-xs text-fg
+                             focus:outline-none focus:border-accent transition-colors cursor-pointer"
+                />
+              </label>
+              {(startDate || endDate) && (
+                <button
+                  type="button"
+                  onClick={() => { setStartDate(''); setEndDate('') }}
+                  className="text-xs text-fg-faint hover:text-fg underline underline-offset-2 ml-1 transition-colors"
+                >
+                  重置
+                </button>
               )}
-              <section>
-                <KPICards refreshKey={refreshKey} foldPluginIds={mergeSourceIds} />
-              </section>
+              <span className="ml-auto text-xs text-fg-faint font-mono">
+                {filteredDaily != null
+                  ? `${filteredDaily.length} 天${mergeEnabled ? ' · 含附加源' : ''}`
+                  : daily
+                  ? `${daily.length} 天`
+                  : '加载中…'}
+              </span>
+            </section>
 
-              {/* 日期范围筛选器 */}
-              <section className="flex items-center flex-wrap gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/40 dark:bg-slate-900/40 px-4 py-3">
-                <span className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500 shrink-0">
-                  日期筛选
-                </span>
-                <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                  开始
-                  <input
-                    type="date"
-                    value={startDate}
-                    min={dateRange?.min}
-                    max={dateRange?.max}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200
-                               focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer"
-                  />
-                </label>
-                <span className="text-slate-300 dark:text-slate-700 text-xs">—</span>
-                <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                  结束
-                  <input
-                    type="date"
-                    value={endDate}
-                    min={dateRange?.min}
-                    max={dateRange?.max}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200
-                               focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer"
-                  />
-                </label>
-                {(startDate || endDate) && (
-                  <button
-                    onClick={() => { setStartDate(''); setEndDate('') }}
-                    className="text-xs text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 underline underline-offset-2 ml-1 transition-colors"
-                  >
-                    重置
-                  </button>
-                )}
-                <span className="ml-auto text-xs text-slate-400 dark:text-slate-600 font-mono">
-                  {filteredDaily != null
-                    ? `${filteredDaily.length} 天${mergeEnabled ? ' · 含附加源' : ''}`
-                    : daily
-                    ? `${daily.length} 天`
-                    : '加载中…'}
-                </span>
-              </section>
-
-              {/* 趋势图表区域 */}
-              {dailyError ? (
-                <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-600 dark:text-red-400">
-                  加载每日数据失败：{dailyError}（请确认已启动 dashboard/server）
+            {/* 趋势图表区域 */}
+            {dailyError ? (
+              <div className="rounded-xl border border-danger-border bg-danger-soft p-4 text-sm text-danger">
+                加载每日数据失败：{dailyError}（请确认已启动 dashboard/server）
+              </div>
+            ) : (
+              <section className="space-y-6">
+                <h2 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
+                  趋势分析
+                </h2>
+                <div className="grid gap-6 xl:grid-cols-2">
+                  <UsageTrendChart daily={filteredDaily} />
+                  <TokenDistChart daily={filteredDaily} />
                 </div>
-              ) : (
-                <section className="space-y-6">
-                  <h2 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                    趋势分析
-                  </h2>
-                  <div className="grid gap-6 xl:grid-cols-2">
-                    <UsageTrendChart daily={filteredDaily} />
-                    <TokenDistChart daily={filteredDaily} />
-                  </div>
-                  <ModelUsageChart daily={filteredDaily} />
-                </section>
-              )}
-            </div>
-          )}
+                <ModelUsageChart daily={filteredDaily} />
+              </section>
+            )}
+          </div>
+        )}
 
-          {/* ── 报销导出 Tab ── */}
-          {activeTab === 'reimbursement' && (
-            <div className="space-y-6">
-              <h2 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                分月报销记录（按账单刷新日）
-              </h2>
-              <ReimbursementView refreshKey={refreshKey} daily={daily} />
-            </div>
-          )}
+        {/* ── 报销导出 Tab ── */}
+        {activeTab === 'reimbursement' && (
+          <div className="space-y-6">
+            <h2 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
+              分月报销记录（按账单刷新日）
+            </h2>
+            <ReimbursementView refreshKey={refreshKey} daily={daily} />
+          </div>
+        )}
 
-          {/* ── 周期统计 Tab ── */}
-          {activeTab === 'period-stats' && (
-            <div className="space-y-6">
-              <h2 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                月度 / 账单周期统计
-              </h2>
-              <PeriodStatsView refreshKey={refreshKey} />
-            </div>
-          )}
+        {/* ── 周期统计 Tab ── */}
+        {activeTab === 'period-stats' && (
+          <div className="space-y-6">
+            <h2 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
+              月度 / 账单周期统计
+            </h2>
+            <PeriodStatsView refreshKey={refreshKey} />
+          </div>
+        )}
 
-          {/* ── 模型详情 Tab ── */}
-          {activeTab === 'model-details' && (
-            <div className="space-y-6">
-              <h2 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                模型详情分析
-              </h2>
-              {mergeEnabled && addonSources.length > 0 && (
-                <p className="text-[11px] text-emerald-600/90 dark:text-emerald-400/80">
-                  已叠加本地附加源模型映射（报销不受影响）。
-                </p>
-              )}
-              {dailyError ? (
-                <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-600 dark:text-red-400">
-                  加载每日数据失败：{dailyError}（请确认已启动 dashboard/server）
-                </div>
-              ) : (
-                <ModelDetailedChart daily={filteredDaily} />
-              )}
-              <ModelLeaderboard
-                refreshKey={refreshKey}
-                foldPluginIds={mergeSourceIds}
-              />
-            </div>
-          )}
-
-          {/* ── 本地附加源 Tab ── */}
-          {activeTab.startsWith('plugin:') && (
-            <GenericSourceView
-              pluginId={activeTab.slice('plugin:'.length)}
+        {/* ── 模型详情 Tab ── */}
+        {activeTab === 'model-details' && (
+          <div className="space-y-6">
+            <h2 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
+              模型详情分析
+            </h2>
+            {mergeEnabled && addonSources.length > 0 && (
+              <p className="text-[11px] text-accent">
+                已叠加本地附加源模型映射（报销不受影响）。
+              </p>
+            )}
+            {dailyError ? (
+              <div className="rounded-xl border border-danger-border bg-danger-soft p-4 text-sm text-danger">
+                加载每日数据失败：{dailyError}（请确认已启动 dashboard/server）
+              </div>
+            ) : (
+              <ModelDetailedChart daily={filteredDaily} />
+            )}
+            <ModelLeaderboard
               refreshKey={refreshKey}
-              mergeEnabled={mergeEnabled}
-              onMergeChange={setMerge}
-              addonSources={addonSources}
+              foldPluginIds={mergeSourceIds}
             />
-          )}
+          </div>
+        )}
 
-          {/* 页脚 */}
-          <footer className="border-t border-slate-200 dark:border-slate-800/60 pt-6 pb-2">
-            <p className="text-center text-[11px] text-slate-400 dark:text-slate-700">
-              数据仅供参考 · estimatedUsd 按公开文档单价计算，不等同于实际账单
-              {pluginTabs.length > 0
-                ? ' · 附加数据源与主用量默认分列，合并需显式打开开关'
-                : ''}
-            </p>
-          </footer>
-        </main>
-      </div>
-    </ThemeContext.Provider>
+        {/* ── 本地附加源 Tab ── */}
+        {activeTab.startsWith('plugin:') && (
+          <GenericSourceView
+            pluginId={activeTab.slice('plugin:'.length)}
+            refreshKey={refreshKey}
+            mergeEnabled={mergeEnabled}
+            onMergeChange={setMerge}
+            addonSources={addonSources}
+          />
+        )}
+
+        {/* 页脚 */}
+        <footer className="border-t border-line/60 pt-6 pb-2">
+          <p className="text-center text-[11px] text-fg-faint">
+            数据仅供参考 · estimatedUsd 按公开文档单价计算，不等同于实际账单
+            {pluginTabs.length > 0
+              ? ' · 附加数据源与主用量默认分列，合并需显式打开开关'
+              : ''}
+          </p>
+        </footer>
+      </main>
+    </div>
+  )
+}
+
+function App() {
+  return (
+    <ThemeProvider>
+      <AppShell />
+    </ThemeProvider>
   )
 }
 

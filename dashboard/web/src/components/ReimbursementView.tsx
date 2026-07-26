@@ -537,11 +537,11 @@ export function ReimbursementView({
   if (loading) {
     return (
       <div className="space-y-4">
-        <div className="h-24 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900/60" />
+        <div className="h-24 animate-pulse rounded-xl bg-surface-2 border border-line" />
         {Array.from({ length: 2 }).map((_, i) => (
           <div
             key={i}
-            className="h-96 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900/60"
+            className="h-96 animate-pulse rounded-xl bg-surface-2 border border-line"
           />
         ))}
       </div>
@@ -550,7 +550,7 @@ export function ReimbursementView({
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-600 dark:text-red-400">
+      <div className="rounded-xl border border-danger-border bg-danger-soft p-4 text-sm text-danger">
         加载报销数据失败：{error}
       </div>
     )
@@ -559,9 +559,9 @@ export function ReimbursementView({
   return (
     <div className="space-y-6">
       {/* 说明 */}
-      <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/80 dark:bg-amber-950/20 px-4 py-3 text-xs text-amber-800 dark:text-amber-200/90 leading-relaxed">
+      <div className="rounded-xl border border-warning-border bg-warning-soft px-4 py-3 text-xs text-warning leading-relaxed">
         <p className="font-medium mb-1">报销导出说明</p>
-        <ul className="list-disc list-inside space-y-0.5 text-amber-700/90 dark:text-amber-200/80">
+        <ul className="list-disc list-inside space-y-0.5 opacity-90">
           <li>「每月」按账单刷新日划分（如 5.23～6.23，6.23 当日 00:00 进入下一周期），非自然月。</li>
           <li>每张卡片含：周期合计、分类占比、Top 模型、每日花费柱状图，便于财务核对。</li>
           <li>请先填写报销人信息并保存；导出 PNG 为白底截图，可直接附在报销单后。</li>
@@ -570,12 +570,12 @@ export function ReimbursementView({
       </div>
 
       {/* 报销人 + 控制 */}
-      <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/40 dark:bg-slate-900/40 px-4 py-4 space-y-4">
-        <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400">
+      <section className="rounded-xl border border-line bg-surface/40 px-4 py-4 space-y-4">
+        <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
           报销人信息
         </h3>
         <div className="grid gap-3 sm:grid-cols-3">
-          <label className="flex flex-col gap-1 text-xs text-slate-500">
+          <label className="flex flex-col gap-1 text-xs text-fg-muted">
             姓名 *
             <input
               value={profile.employeeName}
@@ -583,10 +583,10 @@ export function ReimbursementView({
                 setProfile((p) => ({ ...p, employeeName: e.target.value }))
               }
               placeholder="张三"
-              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-100"
+              className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-fg"
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-slate-500">
+          <label className="flex flex-col gap-1 text-xs text-fg-muted">
             邮箱
             <input
               value={profile.employeeEmail}
@@ -594,23 +594,23 @@ export function ReimbursementView({
                 setProfile((p) => ({ ...p, employeeEmail: e.target.value }))
               }
               placeholder="zhang@company.com"
-              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-100"
+              className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-fg"
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-slate-500">
+          <label className="flex flex-col gap-1 text-xs text-fg-muted">
             用途说明
             <input
               value={profile.purpose}
               onChange={(e) =>
                 setProfile((p) => ({ ...p, purpose: e.target.value }))
               }
-              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-100"
+              className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-fg"
             />
           </label>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-200/80 dark:border-slate-700/80">
-          <label className="flex items-center gap-2 text-xs text-slate-500">
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-line-subtle">
+          <label className="flex items-center gap-2 text-xs text-fg-muted">
             账单刷新日
             <input
               type="number"
@@ -623,7 +623,7 @@ export function ReimbursementView({
                   setBillingCycleDay(Math.min(dayMax, Math.max(dayMin, Math.round(n))))
                 }
               }}
-              className="w-16 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-xs"
+              className="w-16 rounded-lg border border-line bg-surface-2 px-2 py-1 text-xs text-fg"
             />
             日
           </label>
@@ -633,7 +633,7 @@ export function ReimbursementView({
             onClick={() =>
               setBillingCycleDay(periodData?.defaultBillingCycleDay ?? 23)
             }
-            className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2"
+            className="text-xs text-fg-faint hover:text-fg underline underline-offset-2"
           >
             恢复默认 ({periodData?.defaultBillingCycleDay ?? 23})
           </button>
@@ -642,7 +642,7 @@ export function ReimbursementView({
             type="button"
             onClick={saveProfile}
             disabled={savingProfile}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-line bg-surface-2 hover:bg-surface disabled:opacity-50"
           >
             {savingProfile ? '保存中…' : '保存报销人信息'}
           </button>
@@ -650,7 +650,7 @@ export function ReimbursementView({
           <a
             href={buildUsageCsvExportUrl(billingCycleDay)}
             download
-            className="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+            className="px-3 py-2 text-xs font-medium rounded-lg border border-line bg-surface-2 hover:bg-surface text-fg"
           >
             下载全部原始 CSV（含费用）
           </a>
@@ -659,7 +659,7 @@ export function ReimbursementView({
             type="button"
             onClick={exportAll}
             disabled={exporting || periods.length === 0 || !profile.employeeName.trim()}
-            className="ml-auto px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="ml-auto px-4 py-2 text-xs font-semibold rounded-lg bg-accent text-accent-fg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             title={!profile.employeeName.trim() ? '请先填写姓名' : undefined}
           >
             {exporting
@@ -671,11 +671,11 @@ export function ReimbursementView({
 
       {/* 周期概览表 */}
       {periods.length > 0 && (
-        <section className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <section className="rounded-xl border border-line overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-slate-50 dark:bg-slate-900/80 text-left text-slate-400 uppercase tracking-wider">
+                <tr className="bg-surface-2 text-left text-fg-faint uppercase tracking-wider">
                   <th className="px-4 py-3 font-medium">账单周期</th>
                   <th className="px-4 py-3 font-medium text-right">合计</th>
                   <th className="px-4 py-3 font-medium text-right">请求</th>
@@ -683,18 +683,18 @@ export function ReimbursementView({
                   <th className="px-4 py-3 font-medium text-right">操作</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-line-subtle">
                 {periods.map((p) => (
                   <tr
                     key={p.key}
-                    className="hover:bg-slate-50/80 dark:hover:bg-slate-900/40"
+                    className="hover:bg-surface-2"
                   >
                     <td className="px-4 py-3">
-                      <p className="font-medium text-slate-700 dark:text-slate-200">
+                      <p className="font-medium text-fg">
                         {p.label}
                       </p>
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                    <td className="px-4 py-3 text-right font-mono text-accent">
                       {fmtUsd(p.totalCost)}
                     </td>
                     <td className="px-4 py-3 text-right font-mono">
@@ -705,7 +705,7 @@ export function ReimbursementView({
                         {p.topModels.slice(0, 3).map((m) => (
                           <span
                             key={m.model}
-                            className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px]"
+                            className="rounded bg-surface-2 px-2 py-0.5 text-[10px] text-fg-muted"
                           >
                             {m.model}
                           </span>
@@ -716,14 +716,14 @@ export function ReimbursementView({
                       <a
                         href={buildUsageCsvExportUrl(billingCycleDay, p.key)}
                         download
-                        className="text-xs text-sky-600 dark:text-sky-400 hover:underline"
+                        className="text-xs text-info hover:underline"
                       >
                         CSV
                       </a>
                       <button
                         type="button"
                         onClick={() => exportOne(p.key)}
-                        className="text-xs text-violet-600 dark:text-violet-400 hover:underline"
+                        className="text-xs text-violet hover:underline"
                       >
                         PNG
                       </button>
@@ -738,20 +738,20 @@ export function ReimbursementView({
 
       {/* 分月卡片（预览 + 导出源） */}
       <section className="space-y-8">
-        <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400">
+        <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
           分月报销单预览（共 {periods.length} 个账单周期）
         </h3>
         {!daily ? (
-          <p className="text-sm text-slate-400">每日数据加载中，图表将在就绪后显示…</p>
+          <p className="text-sm text-fg-faint">每日数据加载中，图表将在就绪后显示…</p>
         ) : (
           periods.map((period) => (
             <div key={period.key} className="space-y-2">
               <div className="flex items-center justify-between px-1">
-                <p className="text-xs text-slate-500 font-mono">{period.key}</p>
+                <p className="text-xs text-fg-muted font-mono">{period.key}</p>
                 <button
                   type="button"
                   onClick={() => exportOne(period.key)}
-                  className="text-xs text-violet-600 dark:text-violet-400 hover:underline"
+                  className="text-xs text-violet hover:underline"
                 >
                   仅导出本周期
                 </button>

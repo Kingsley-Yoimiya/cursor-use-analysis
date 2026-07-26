@@ -2,7 +2,7 @@
  * 每日消耗细分柱状图（按池类型：Auto / First-party / API）
  * 支持 USD 与 Tokens 两种视图切换
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   BarChart,
   Bar,
@@ -13,7 +13,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts'
-import { useIsDark } from '../context/ThemeContext'
+import { useChartColors } from '../context/ThemeContext'
 
 // ────────── 类型定义 ──────────
 
@@ -31,14 +31,6 @@ interface DailyEntry {
 }
 
 type ViewMode = 'usd' | 'tokens'
-
-// ────────── 颜色配置 ──────────
-
-const POOL_COLORS: Record<keyof PoolValues, string> = {
-  Auto: '#f59e0b',
-  FirstParty: '#8b5cf6',
-  API: '#06b6d4',
-}
 
 const POOLS = ['Auto', 'FirstParty', 'API'] as const
 
@@ -83,19 +75,19 @@ function CustomTooltip({ active, payload, label, mode }: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   const total = payload.reduce((s, p) => s + (p.value ?? 0), 0)
   return (
-    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 shadow-xl text-xs min-w-[160px]">
-      <p className="mb-2 font-medium text-slate-500 dark:text-slate-400">{label}</p>
+    <div className="rounded-lg border border-line bg-elevated px-3 py-2 shadow-theme text-xs min-w-[160px]">
+      <p className="mb-2 font-medium text-fg-muted">{label}</p>
       {[...payload].reverse().map((p) => (
         <div key={p.dataKey} className="flex justify-between gap-4 mb-0.5">
           <span style={{ color: p.color }}>{p.name}</span>
-          <span className="font-mono text-slate-700 dark:text-slate-300">
+          <span className="font-mono text-fg">
             {mode === 'usd' ? `$${p.value.toFixed(4)}` : fmtTok(p.value)}
           </span>
         </div>
       ))}
-      <div className="mt-1.5 border-t border-slate-200 dark:border-slate-800 pt-1 flex justify-between">
-        <span className="text-slate-400 dark:text-slate-500">合计</span>
-        <span className="font-mono text-slate-800 dark:text-slate-200">
+      <div className="mt-1.5 border-t border-line pt-1 flex justify-between">
+        <span className="text-fg-faint">合计</span>
+        <span className="font-mono text-fg">
           {mode === 'usd' ? `$${total.toFixed(4)}` : fmtTok(total)}
         </span>
       </div>
@@ -115,7 +107,7 @@ function CustomLegend({ payload }: { payload?: LegendPayloadItem[] }) {
   return (
     <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 mt-2">
       {payload.map((entry) => (
-        <span key={entry.value} className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+        <span key={entry.value} className="flex items-center gap-1.5 text-[11px] text-fg-muted">
           <span
             className="inline-block h-2.5 w-2.5 rounded-sm"
             style={{ backgroundColor: entry.color }}
@@ -135,13 +127,19 @@ interface ModelUsageChartProps {
 
 export function ModelUsageChart({ daily }: ModelUsageChartProps) {
   const [mode, setMode] = useState<ViewMode>('usd')
-  const isDark = useIsDark()
-  const gridColor = isDark ? '#1e293b' : '#e2e8f0'
-  const tickColor = isDark ? '#64748b' : '#94a3b8'
+  const chartColors = useChartColors()
+  const poolColors = useMemo(
+    (): Record<keyof PoolValues, string> => ({
+      Auto: chartColors.poolAuto,
+      FirstParty: chartColors.poolFirst,
+      API: chartColors.poolApi,
+    }),
+    [chartColors],
+  )
 
   if (!daily) {
     return (
-      <div className="h-72 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800" />
+      <div className="h-72 animate-pulse rounded-xl bg-surface-2 border border-line" />
     )
   }
 
@@ -163,18 +161,18 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
   )
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-5 shadow-sm dark:shadow-lg">
+    <div className="rounded-xl border border-line bg-surface/60 p-5 shadow-theme">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">
+        <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
           每日消耗细分（Auto / First-party / API）
         </h3>
-        <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 text-xs">
+        <div className="flex rounded-lg overflow-hidden border border-line text-xs">
           <button
             onClick={() => setMode('usd')}
             className={`px-3 py-1 transition-colors ${
               mode === 'usd'
-                ? 'bg-emerald-600 text-white'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                ? 'bg-accent text-accent-fg'
+                : 'bg-surface-2 text-fg-muted hover:text-fg hover:bg-surface'
             }`}
           >
             USD
@@ -183,8 +181,8 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
             onClick={() => setMode('tokens')}
             className={`px-3 py-1 transition-colors ${
               mode === 'tokens'
-                ? 'bg-sky-600 text-white'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                ? 'bg-info text-white'
+                : 'bg-surface-2 text-fg-muted hover:text-fg hover:bg-surface'
             }`}
           >
             Tokens
@@ -198,16 +196,16 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
           margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
           barCategoryGap="20%"
         >
-          <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
           <XAxis
             dataKey="date"
-            tick={{ fill: tickColor, fontSize: 11 }}
+            tick={{ fill: chartColors.tick, fontSize: 11 }}
             tickLine={false}
-            axisLine={{ stroke: gridColor }}
+            axisLine={{ stroke: chartColors.grid }}
             interval="preserveStartEnd"
           />
           <YAxis
-            tick={{ fill: tickColor, fontSize: 11 }}
+            tick={{ fill: chartColors.tick, fontSize: 11 }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) =>
@@ -215,7 +213,7 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
             }
             width={60}
           />
-          <Tooltip content={renderTooltip} cursor={{ fill: isDark ? '#1e293b55' : '#e2e8f055' }} />
+          <Tooltip content={renderTooltip} cursor={{ fill: chartColors.cursor }} />
           <Legend content={<CustomLegend />} />
 
           {POOLS.map((pool, i) => (
@@ -224,7 +222,7 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
               dataKey={pool}
               name={POOL_LABELS[pool]}
               stackId="a"
-              fill={POOL_COLORS[pool]}
+              fill={poolColors[pool]}
               radius={i === POOLS.length - 1 ? [3, 3, 0, 0] : undefined}
             />
           ))}

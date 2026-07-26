@@ -70,18 +70,21 @@ interface KPICardProps {
   value: string
   sub?: string
   valueColor?: string
-  accentColor?: string
+  tone?: string
 }
 
-function KPICard({ label, value, sub, valueColor = 'text-slate-800 dark:text-slate-100', accentColor = 'border-l-slate-300 dark:border-l-slate-700' }: KPICardProps) {
+function KPICard({
+  label,
+  value,
+  sub,
+  valueColor = 'text-fg',
+  tone = 'var(--accent)',
+}: KPICardProps) {
   return (
-    <div
-      className={`rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-5 shadow-sm dark:shadow-lg
-        relative overflow-hidden border-l-4 ${accentColor} transition-all hover:bg-slate-50 dark:hover:bg-slate-900/90`}
-    >
-      <p className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">{label}</p>
+    <div className="kpi-card" style={{ ['--kpi-tone' as string]: tone }}>
+      <p className="text-xs font-medium uppercase tracking-widest text-fg-faint">{label}</p>
       <p className={`mt-2 text-2xl font-bold font-mono tracking-tight ${valueColor}`}>{value}</p>
-      {sub && <p className="mt-1 text-xs text-slate-400 dark:text-slate-600">{sub}</p>}
+      {sub && <p className="mt-1 text-xs text-fg-faint">{sub}</p>}
     </div>
   )
 }
@@ -154,7 +157,7 @@ export function KPICards({
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-28 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800" />
+          <div key={i} className="h-28 animate-pulse rounded-xl bg-surface-2 border border-line" />
         ))}
       </div>
     )
@@ -162,7 +165,7 @@ export function KPICards({
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-600 dark:text-red-400">
+      <div className="rounded-xl border border-danger-border bg-danger-soft p-4 text-sm text-danger">
         加载摘要失败：{error}
       </div>
     )
@@ -195,9 +198,9 @@ export function KPICards({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-xs font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">KPI 概览</h2>
+        <h2 className="text-xs font-medium uppercase tracking-widest text-fg-faint">KPI 概览</h2>
         {generatedAt && (
-          <span className="text-[11px] text-slate-400 dark:text-slate-600">数据生成于 {generatedAt}</span>
+          <span className="text-[11px] text-fg-faint">数据生成于 {generatedAt}</span>
         )}
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -205,36 +208,42 @@ export function KPICards({
           label="估算 API 总价值"
           value={totals.totalEstimatedUsd != null ? fmtUsd(totals.totalEstimatedUsd) : '—'}
           sub="按公开文档单价计算，不等同于发票"
-          valueColor="text-emerald-600 dark:text-emerald-400"
-          accentColor="border-l-emerald-500"
+          valueColor="text-accent"
+          tone="var(--accent)"
         />
         <KPICard
           label="总请求行数"
           value={totals.rows != null ? fmtInt(totals.rows) : '—'}
           sub={`未识别模型：${totals.unknownModelRows ?? 0} 行`}
-          valueColor="text-violet-600 dark:text-violet-400"
-          accentColor="border-l-violet-500"
+          valueColor="text-violet"
+          tone="var(--violet)"
         />
         <KPICard
           label="总 Token 消耗"
           value={fmtTokens(totalTokens)}
           sub={`Cache Read ${fmtTokens(totalCacheRead)}`}
-          valueColor="text-sky-600 dark:text-sky-400"
-          accentColor="border-l-sky-500"
+          valueColor="text-info"
+          tone="var(--info)"
         />
         <KPICard
           label="缓存命中率"
           value={fmtPercent(cacheHitRate)}
           sub="Cache Read / Total Input"
-          valueColor={cacheHitRate > 0.7 ? 'text-emerald-600 dark:text-emerald-400' : cacheHitRate > 0.5 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}
-          accentColor={cacheHitRate > 0.7 ? 'border-l-emerald-500' : cacheHitRate > 0.5 ? 'border-l-amber-500' : 'border-l-red-500'}
+          valueColor={cacheHitRate > 0.7 ? 'text-accent' : cacheHitRate > 0.5 ? 'text-warning' : 'text-danger'}
+          tone={
+            cacheHitRate > 0.7
+              ? 'var(--accent)'
+              : cacheHitRate > 0.5
+                ? 'var(--warning)'
+                : 'var(--danger)'
+          }
         />
         <KPICard
           label="最高消耗模型"
           value={topModel ? topModel.model : '—'}
           sub={topModel ? `${fmtUsd(topModel.estimatedUsd)} · ${fmtInt(topModel.requests)} 次` : undefined}
-          valueColor="text-amber-600 dark:text-amber-400"
-          accentColor="border-l-amber-500"
+          valueColor="text-warning"
+          tone="var(--warning)"
         />
       </div>
     </div>
