@@ -97,7 +97,8 @@ export function ThemePalettePicker() {
       {open && (
         <ul
           role="listbox"
-          className="absolute right-0 mt-1.5 w-52 rounded-2xl border border-line bg-elevated shadow-theme p-1.5 z-50"
+          className="absolute right-0 mt-1.5 w-52 border border-line bg-elevated p-1 z-50"
+          style={{ borderRadius: 'var(--radius-md)' }}
         >
           {PALETTE_OPTIONS.map((opt) => {
             const preview = PREVIEW[opt.id][isDark ? 'dark' : 'light']
@@ -110,8 +111,9 @@ export function ThemePalettePicker() {
                     setPalette(opt.id)
                     setOpen(false)
                   }}
-                  className={`ui-press w-full flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-left
+                  className={`ui-press w-full flex items-center gap-2.5 px-2.5 py-1.5 text-left
                     ${active ? 'bg-accent-soft text-fg' : 'text-fg-muted hover:bg-surface-2 hover:text-fg'}`}
+                  style={{ borderRadius: 'var(--radius-sm)' }}
                 >
                   <span className="flex items-center gap-0.5 shrink-0" aria-hidden>
                     {preview.map((c) => (

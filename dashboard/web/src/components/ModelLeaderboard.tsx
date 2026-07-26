@@ -127,7 +127,7 @@ export function ModelLeaderboard({
 
   if (loading) {
     return (
-      <div className="rounded-xl border border-line bg-surface/60 p-5">
+      <div className="panel p-4">
         <div className="h-6 w-32 animate-pulse rounded bg-surface-2 mb-4" />
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -147,7 +147,7 @@ export function ModelLeaderboard({
   }
 
   return (
-    <div className="rounded-xl border border-line bg-surface/60 shadow-theme overflow-hidden">
+    <div className="panel overflow-hidden">
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-line-subtle">
         <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">

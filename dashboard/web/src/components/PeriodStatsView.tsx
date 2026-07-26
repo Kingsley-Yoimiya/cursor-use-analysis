@@ -315,7 +315,7 @@ function ModelStackTooltip({
 
   return (
     <div
-      className="rounded-lg px-3 py-2 shadow-theme text-xs min-w-[140px] max-w-[220px]"
+      className="rounded-lg px-3 py-2 text-xs min-w-[140px] max-w-[220px]"
       style={{
         background: surface,
         border: `1px solid ${border}`,
@@ -467,7 +467,7 @@ function PoolBreakdown({ period, poolColors }: { period: PeriodEntry; poolColors
 
 function PeriodCard({ period, poolColors }: PeriodCardProps & { poolColors: Record<(typeof POOLS)[number], string> }) {
   return (
-    <article className="rounded-xl border border-line bg-surface/60 p-5 shadow-theme space-y-4">
+    <article className="panel p-4 space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-fg">
@@ -711,7 +711,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
   return (
     <div className="space-y-6">
       {/* 控制栏 */}
-      <section className="flex flex-wrap items-center gap-4 rounded-xl border border-line bg-surface/40 px-4 py-3">
+      <section className="flex flex-wrap items-center gap-4 panel bg-surface-2 px-4 py-3">
         <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-0.5">
           <button
             type="button"
@@ -777,7 +777,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
               花费趋势
             </h3>
             <div className={trendGridClass(compactTrendLayout)}>
-              <div className="rounded-xl border border-line bg-surface/60 p-4">
+              <div className="panel p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                   <h4 className="text-[11px] font-medium text-fg-muted">
                     按模型堆叠（Top {topModelCount}）
@@ -820,7 +820,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                 )}
               </div>
 
-              <div className="rounded-xl border border-line bg-surface/60 p-4">
+              <div className="panel p-4">
                 <h4 className="text-[11px] font-medium text-fg-muted mb-4">
                   按模型堆叠（Token Top {topModelCount}）
                 </h4>
@@ -852,7 +852,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
               Token 趋势
             </h3>
             <div className={trendGridClass(compactTrendLayout)}>
-              <div className="rounded-xl border border-line bg-surface/60 p-4">
+              <div className="panel p-4">
                 <h4 className="text-[11px] font-medium text-fg-muted mb-4">
                   总量 & Fast 比例
                 </h4>
@@ -899,7 +899,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-line bg-surface/60 p-4">
+              <div className="panel p-4">
                 <h4 className="text-[11px] font-medium text-fg-muted mb-4">
                   Auto / First-party / API 池（Token）
                 </h4>
@@ -947,7 +947,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
       )}
 
       {/* 汇总表 */}
-      <section className="rounded-xl border border-line overflow-hidden">
+      <section className="panel overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>

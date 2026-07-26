@@ -570,7 +570,7 @@ export function ReimbursementView({
       </div>
 
       {/* 报销人 + 控制 */}
-      <section className="rounded-xl border border-line bg-surface/40 px-4 py-4 space-y-4">
+      <section className="panel bg-surface-2 px-4 py-4 space-y-4">
         <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
           报销人信息
         </h3>
@@ -671,7 +671,7 @@ export function ReimbursementView({
 
       {/* 周期概览表 */}
       {periods.length > 0 && (
-        <section className="rounded-xl border border-line overflow-hidden">
+        <section className="panel overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>

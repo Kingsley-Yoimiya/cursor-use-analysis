@@ -1,6 +1,5 @@
 /**
  * 每日消耗细分柱状图（按池类型：Auto / First-party / API）
- * 支持 USD 与 Tokens 两种视图切换
  */
 import { useMemo, useState } from 'react'
 import {
@@ -10,12 +9,18 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from 'recharts'
 import { useChartColors } from '../context/ThemeContext'
-
-// ────────── 类型定义 ──────────
+import {
+  ChartLegendRow,
+  ChartPanel,
+  ChartTooltipShell,
+  OVERVIEW_SYNC_ID,
+  chartCursorFill,
+  chartGridProps,
+  chartTickStyle,
+} from '../lib/chartChrome'
 
 interface PoolValues {
   Auto: number
@@ -40,8 +45,6 @@ const POOL_LABELS: Record<(typeof POOLS)[number], string> = {
   API: 'API',
 }
 
-// ────────── 工具函数 ──────────
-
 function fmtDate(d: string): string {
   const parts = d.split('-')
   if (parts.length < 3) return d
@@ -54,8 +57,6 @@ function fmtTok(n: number): string {
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
   return String(n)
 }
-
-// ────────── 自定义 Tooltip ──────────
 
 interface TooltipPayloadItem {
   value: number
@@ -75,51 +76,57 @@ function CustomTooltip({ active, payload, label, mode }: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   const total = payload.reduce((s, p) => s + (p.value ?? 0), 0)
   return (
-    <div className="rounded-lg border border-line bg-elevated px-3 py-2 shadow-theme text-xs min-w-[160px]">
-      <p className="mb-2 font-medium text-fg-muted">{label}</p>
+    <ChartTooltipShell label={label}>
       {[...payload].reverse().map((p) => (
-        <div key={p.dataKey} className="flex justify-between gap-4 mb-0.5">
-          <span style={{ color: p.color }}>{p.name}</span>
-          <span className="font-mono text-fg">
+        <div key={p.dataKey} className="mb-0.5 flex justify-between gap-4">
+          <span className="text-fg-muted">{p.name}</span>
+          <span className="chart-tooltip-value text-fg">
             {mode === 'usd' ? `$${p.value.toFixed(4)}` : fmtTok(p.value)}
           </span>
         </div>
       ))}
-      <div className="mt-1.5 border-t border-line pt-1 flex justify-between">
-        <span className="text-fg-faint">合计</span>
-        <span className="font-mono text-fg">
+      <div className="mt-1.5 flex justify-between border-t border-line pt-1">
+        <span className="font-medium text-fg-muted">合计</span>
+        <span className="chart-tooltip-value text-fg">
           {mode === 'usd' ? `$${total.toFixed(4)}` : fmtTok(total)}
         </span>
       </div>
-    </div>
+    </ChartTooltipShell>
   )
 }
 
-// ────────── 自定义图例 ──────────
-
-interface LegendPayloadItem {
-  color: string
-  value: string
-}
-
-function CustomLegend({ payload }: { payload?: LegendPayloadItem[] }) {
-  if (!payload) return null
+function ModeToggle({
+  mode,
+  setMode,
+}: {
+  mode: ViewMode
+  setMode: (m: ViewMode) => void
+}) {
   return (
-    <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 mt-2">
-      {payload.map((entry) => (
-        <span key={entry.value} className="flex items-center gap-1.5 text-[11px] text-fg-muted">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-sm"
-            style={{ backgroundColor: entry.color }}
-          />
-          {entry.value}
-        </span>
-      ))}
+    <div className="toolbar-cluster text-[10px]">
+      <button
+        type="button"
+        onClick={() => setMode('usd')}
+        className={`ui-press h-6 px-2 ${
+          mode === 'usd' ? 'bg-accent text-accent-fg' : 'text-fg-muted hover:text-fg'
+        }`}
+        style={{ borderRadius: 'var(--radius-sm)' }}
+      >
+        USD
+      </button>
+      <button
+        type="button"
+        onClick={() => setMode('tokens')}
+        className={`ui-press h-6 px-2 ${
+          mode === 'tokens' ? 'bg-accent text-accent-fg' : 'text-fg-muted hover:text-fg'
+        }`}
+        style={{ borderRadius: 'var(--radius-sm)' }}
+      >
+        Tokens
+      </button>
     </div>
   )
 }
-
-// ────────── 主组件 ──────────
 
 interface ModelUsageChartProps {
   daily: DailyEntry[] | null
@@ -136,17 +143,19 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
     }),
     [chartColors],
   )
+  const tick = chartTickStyle(chartColors.tick)
 
   if (!daily) {
-    return (
-      <div className="h-72 animate-pulse rounded-xl bg-surface-2 border border-line" />
-    )
+    return <div className="h-72 animate-pulse panel bg-surface-2" />
   }
 
   const chartData = daily.map((d) => ({
     date: fmtDate(d.date),
     Auto: mode === 'usd' ? (d.costByPool?.Auto ?? 0) : (d.tokensByPool?.Auto ?? 0),
-    FirstParty: mode === 'usd' ? (d.costByPool?.FirstParty ?? 0) : (d.tokensByPool?.FirstParty ?? 0),
+    FirstParty:
+      mode === 'usd'
+        ? (d.costByPool?.FirstParty ?? 0)
+        : (d.tokensByPool?.FirstParty ?? 0),
     API: mode === 'usd' ? (d.costByPool?.API ?? 0) : (d.tokensByPool?.API ?? 0),
   }))
 
@@ -161,73 +170,58 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
   )
 
   return (
-    <div className="rounded-xl border border-line bg-surface/60 p-5 shadow-theme">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
-          每日消耗细分（Auto / First-party / API）
-        </h3>
-        <div className="flex rounded-lg overflow-hidden border border-line text-xs">
-          <button
-            onClick={() => setMode('usd')}
-            className={`px-3 py-1 transition-colors ${
-              mode === 'usd'
-                ? 'bg-accent text-accent-fg'
-                : 'bg-surface-2 text-fg-muted hover:text-fg hover:bg-surface'
-            }`}
-          >
-            USD
-          </button>
-          <button
-            onClick={() => setMode('tokens')}
-            className={`px-3 py-1 transition-colors ${
-              mode === 'tokens'
-                ? 'bg-info text-white'
-                : 'bg-surface-2 text-fg-muted hover:text-fg hover:bg-surface'
-            }`}
-          >
-            Tokens
-          </button>
-        </div>
-      </div>
-
-      <ResponsiveContainer width="100%" height={300}>
+    <ChartPanel
+      title="每日消耗细分（Auto / First-party / API）"
+      actions={<ModeToggle mode={mode} setMode={setMode} />}
+    >
+      <ChartLegendRow
+        items={POOLS.map((pool) => ({
+          color: poolColors[pool],
+          label: POOL_LABELS[pool],
+        }))}
+      />
+      <ResponsiveContainer width="100%" height={280}>
         <BarChart
           data={chartData}
-          margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
-          barCategoryGap="20%"
+          syncId={OVERVIEW_SYNC_ID}
+          margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
+          barCategoryGap="28%"
         >
-          <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
+          <CartesianGrid {...chartGridProps(chartColors.grid)} />
           <XAxis
             dataKey="date"
-            tick={{ fill: chartColors.tick, fontSize: 11 }}
+            tick={tick}
             tickLine={false}
-            axisLine={{ stroke: chartColors.grid }}
+            axisLine={{ stroke: chartColors.grid, strokeOpacity: 0.7 }}
             interval="preserveStartEnd"
+            minTickGap={28}
           />
           <YAxis
-            tick={{ fill: chartColors.tick, fontSize: 11 }}
+            tick={tick}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) =>
               mode === 'usd' ? `$${v.toFixed(2)}` : fmtTok(v)
             }
-            width={60}
+            width={52}
           />
-          <Tooltip content={renderTooltip} cursor={{ fill: chartColors.cursor }} />
-          <Legend content={<CustomLegend />} />
-
-          {POOLS.map((pool, i) => (
+          <Tooltip
+            content={renderTooltip}
+            cursor={chartCursorFill(chartColors.cursor)}
+            isAnimationActive={false}
+          />
+          {POOLS.map((pool) => (
             <Bar
               key={pool}
               dataKey={pool}
               name={POOL_LABELS[pool]}
               stackId="a"
               fill={poolColors[pool]}
-              radius={i === POOLS.length - 1 ? [3, 3, 0, 0] : undefined}
+              isAnimationActive={false}
             />
           ))}
         </BarChart>
       </ResponsiveContainer>
-    </div>
+    </ChartPanel>
   )
 }

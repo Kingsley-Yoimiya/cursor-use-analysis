@@ -260,7 +260,7 @@ export function DataSyncBar({ onReload }: { onReload: () => void }) {
 
       {banner && (
         <div
-          className={`fixed bottom-4 right-4 z-50 max-w-md px-4 py-3 rounded-lg shadow-theme border text-sm ${
+          className={`fixed bottom-4 right-4 z-50 max-w-md px-4 py-3 rounded-lg border text-sm ${
             banner.kind === 'ok'
               ? 'bg-accent-soft border-line text-accent'
               : banner.kind === 'err'

@@ -2,7 +2,7 @@
  * Cursor 用量面板 — 主视图
  * 阶段四：明暗主题切换 + 标签页（概览 / 模型详情）+ 分模型数据
  */
-import { useEffect, useState, useMemo, useRef, useLayoutEffect } from 'react'
+import { useEffect, useState, useMemo, useRef, useLayoutEffect, useCallback } from 'react'
 import axios from 'axios'
 import { KPICards } from './components/KPICards'
 import { UsageTrendChart } from './components/UsageTrendChart'
@@ -95,6 +95,7 @@ function AppShell() {
   const [dailyError, setDailyError] = useState<string | null>(null)
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
+  const didInitRange = useRef(false)
 
   // ── 刷新数据（由 DataSyncBar 触发 bumpRefresh）──
   const [refreshKey, setRefreshKey] = useState(0)
@@ -204,6 +205,55 @@ function AppShell() {
     return { min: src[0].date, max: src[src.length - 1].date }
   }, [displayDaily, daily])
 
+  const shiftIsoDate = useCallback((iso: string, deltaDays: number) => {
+    const d = new Date(`${iso}T00:00:00`)
+    d.setDate(d.getDate() + deltaDays)
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }, [])
+
+  const applyLastDays = useCallback(
+    (days: number) => {
+      if (!dateRange) return
+      const start = shiftIsoDate(dateRange.max, -(days - 1))
+      setStartDate(start < dateRange.min ? dateRange.min : start)
+      setEndDate(dateRange.max)
+    },
+    [dateRange, shiftIsoDate],
+  )
+
+  const clearDateFilter = useCallback(() => {
+    setStartDate('')
+    setEndDate('')
+  }, [])
+
+  // 数据跨度超过 90 天时，默认聚焦最近三个月
+  useEffect(() => {
+    if (didInitRange.current || !dateRange) return
+    didInitRange.current = true
+    const spanStart = new Date(`${dateRange.min}T00:00:00`)
+    const spanEnd = new Date(`${dateRange.max}T00:00:00`)
+    const spanDays =
+      Math.round((spanEnd.getTime() - spanStart.getTime()) / 86_400_000) + 1
+    if (spanDays > 90) applyLastDays(90)
+  }, [dateRange, applyLastDays])
+
+  const activePreset = useMemo(() => {
+    if (!dateRange) return null as null | '7' | '30' | '90' | 'all'
+    if (!startDate && !endDate) return 'all'
+    if (endDate !== dateRange.max) return null
+    const expected7 = shiftIsoDate(dateRange.max, -6)
+    const expected30 = shiftIsoDate(dateRange.max, -29)
+    const expected90 = shiftIsoDate(dateRange.max, -89)
+    const clamp = (s: string) => (s < dateRange.min ? dateRange.min : s)
+    if (startDate === clamp(expected7)) return '7'
+    if (startDate === clamp(expected30)) return '30'
+    if (startDate === clamp(expected90)) return '90'
+    return null
+  }, [dateRange, startDate, endDate, shiftIsoDate])
+
   const mergeSourceIds = mergeEnabled ? addonSources.map((p) => p.id) : []
 
   const tabs: { id: Tab; label: string }[] = [
@@ -249,7 +299,7 @@ function AppShell() {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-accent" />
-            <h1 className="text-base font-semibold tracking-tight text-fg md:text-lg truncate">
+            <h1 className="text-base font-bold tracking-tight text-fg md:text-lg truncate">
               Cursor 用量面板
             </h1>
           </div>
@@ -319,7 +369,7 @@ function AppShell() {
               onClick={() => setActiveTab(tab.id)}
               className={`tab-rail-btn ${
                 activeTab === tab.id
-                  ? 'text-fg'
+                  ? 'font-semibold text-fg'
                   : 'text-fg-muted hover:text-fg'
               }`}
             >
@@ -341,11 +391,32 @@ function AppShell() {
             </section>
 
             {/* 日期范围筛选器 */}
-            <section className="flex items-center flex-wrap gap-3 rounded-xl border border-line bg-surface-2/40 px-4 py-3">
-              <span className="text-xs font-medium uppercase tracking-widest text-fg-faint shrink-0">
+            <section className="flex items-center flex-wrap gap-3 panel bg-surface-2 px-3 py-2">
+              <span className="section-label shrink-0">
                 日期筛选
               </span>
-              <label className="flex items-center gap-2 text-xs text-fg-muted">
+              <div className="toolbar-cluster">
+                {(
+                  [
+                    { id: '7' as const, label: '7 天', days: 7 },
+                    { id: '30' as const, label: '30 天', days: 30 },
+                    { id: '90' as const, label: '90 天', days: 90 },
+                    { id: 'all' as const, label: '全部', days: null },
+                  ] as const
+                ).map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`range-preset ${activePreset === p.id ? 'is-active' : ''}`}
+                    onClick={() =>
+                      p.days == null ? clearDateFilter() : applyLastDays(p.days)
+                    }
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 text-xs font-medium text-fg-muted">
                 开始
                 <input
                   type="date"
@@ -353,12 +424,12 @@ function AppShell() {
                   min={dateRange?.min}
                   max={dateRange?.max}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-elevated border border-line rounded-lg px-2.5 py-1.5 text-xs text-fg
+                  className="bg-elevated border border-line rounded-lg px-2.5 py-1.5 text-xs font-semibold text-fg
                              focus:outline-none focus:border-accent transition-colors cursor-pointer"
                 />
               </label>
               <span className="text-fg-faint text-xs">—</span>
-              <label className="flex items-center gap-2 text-xs text-fg-muted">
+              <label className="flex items-center gap-2 text-xs font-medium text-fg-muted">
                 结束
                 <input
                   type="date"
@@ -366,20 +437,20 @@ function AppShell() {
                   min={dateRange?.min}
                   max={dateRange?.max}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-elevated border border-line rounded-lg px-2.5 py-1.5 text-xs text-fg
+                  className="bg-elevated border border-line rounded-lg px-2.5 py-1.5 text-xs font-semibold text-fg
                              focus:outline-none focus:border-accent transition-colors cursor-pointer"
                 />
               </label>
               {(startDate || endDate) && (
                 <button
                   type="button"
-                  onClick={() => { setStartDate(''); setEndDate('') }}
-                  className="text-xs text-fg-faint hover:text-fg underline underline-offset-2 ml-1 transition-colors"
+                  onClick={clearDateFilter}
+                  className="text-xs font-semibold text-fg-muted hover:text-fg underline underline-offset-2 ml-1 transition-colors"
                 >
                   重置
                 </button>
               )}
-              <span className="ml-auto text-xs text-fg-faint font-mono">
+              <span className="ml-auto text-xs font-semibold text-fg-muted font-mono">
                 {filteredDaily != null
                   ? `${filteredDaily.length} 天${mergeEnabled ? ' · 含附加源' : ''}`
                   : daily
@@ -395,7 +466,7 @@ function AppShell() {
               </div>
             ) : (
               <section className="space-y-6">
-                <h2 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
+                <h2 className="section-title">
                   趋势分析
                 </h2>
                 <div className="grid gap-6 xl:grid-cols-2">
@@ -411,7 +482,7 @@ function AppShell() {
         {/* ── 报销导出 Tab ── */}
         {activeTab === 'reimbursement' && (
           <div className="space-y-6">
-            <h2 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
+            <h2 className="section-title">
               分月报销记录（按账单刷新日）
             </h2>
             <ReimbursementView refreshKey={refreshKey} daily={daily} />
@@ -421,7 +492,7 @@ function AppShell() {
         {/* ── 周期统计 Tab ── */}
         {activeTab === 'period-stats' && (
           <div className="space-y-6">
-            <h2 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
+            <h2 className="section-title">
               月度 / 账单周期统计
             </h2>
             <PeriodStatsView refreshKey={refreshKey} />
@@ -431,7 +502,7 @@ function AppShell() {
         {/* ── 模型详情 Tab ── */}
         {activeTab === 'model-details' && (
           <div className="space-y-6">
-            <h2 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
+            <h2 className="section-title">
               模型详情分析
             </h2>
             {mergeEnabled && addonSources.length > 0 && (

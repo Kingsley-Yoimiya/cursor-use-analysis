@@ -79,12 +79,20 @@ function KPICard({
   sub,
   valueColor = 'text-fg',
   tone = 'var(--accent)',
-}: KPICardProps) {
+  hero = false,
+}: KPICardProps & { hero?: boolean }) {
   return (
-    <div className="kpi-card" style={{ ['--kpi-tone' as string]: tone }}>
-      <p className="text-xs font-medium uppercase tracking-widest text-fg-faint">{label}</p>
-      <p className={`mt-2 text-2xl font-bold font-mono tracking-tight ${valueColor}`}>{value}</p>
-      {sub && <p className="mt-1 text-xs text-fg-faint">{sub}</p>}
+    <div
+      className={`kpi-card ${hero ? 'kpi-hero' : ''}`}
+      style={{ ['--kpi-tone' as string]: tone }}
+    >
+      <p className="section-label">{label}</p>
+      <p
+        className={`mt-1.5 kpi-value tracking-tight ${hero ? '' : 'text-lg'} ${valueColor}`}
+      >
+        {value}
+      </p>
+      {sub && <p className="mt-1 text-[11px] text-fg-muted leading-snug">{sub}</p>}
     </div>
   )
 }
@@ -155,10 +163,13 @@ export function KPICards({
 
   if (loading) {
     return (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-28 animate-pulse rounded-xl bg-surface-2 border border-line" />
-        ))}
+      <div className="grid gap-3 lg:grid-cols-12">
+        <div className="h-28 animate-pulse panel bg-surface-2 lg:col-span-4" />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 lg:col-span-8">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-24 animate-pulse panel bg-surface-2" />
+          ))}
+        </div>
       </div>
     )
   }
@@ -198,53 +209,68 @@ export function KPICards({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-xs font-medium uppercase tracking-widest text-fg-faint">KPI 概览</h2>
+        <h2 className="section-title">KPI 概览</h2>
         {generatedAt && (
           <span className="text-[11px] text-fg-faint">数据生成于 {generatedAt}</span>
         )}
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <KPICard
-          label="估算 API 总价值"
-          value={totals.totalEstimatedUsd != null ? fmtUsd(totals.totalEstimatedUsd) : '—'}
-          sub="按公开文档单价计算，不等同于发票"
-          valueColor="text-accent"
-          tone="var(--accent)"
-        />
-        <KPICard
-          label="总请求行数"
-          value={totals.rows != null ? fmtInt(totals.rows) : '—'}
-          sub={`未识别模型：${totals.unknownModelRows ?? 0} 行`}
-          valueColor="text-violet"
-          tone="var(--violet)"
-        />
-        <KPICard
-          label="总 Token 消耗"
-          value={fmtTokens(totalTokens)}
-          sub={`Cache Read ${fmtTokens(totalCacheRead)}`}
-          valueColor="text-info"
-          tone="var(--info)"
-        />
-        <KPICard
-          label="缓存命中率"
-          value={fmtPercent(cacheHitRate)}
-          sub="Cache Read / Total Input"
-          valueColor={cacheHitRate > 0.7 ? 'text-accent' : cacheHitRate > 0.5 ? 'text-warning' : 'text-danger'}
-          tone={
-            cacheHitRate > 0.7
-              ? 'var(--accent)'
-              : cacheHitRate > 0.5
-                ? 'var(--warning)'
-                : 'var(--danger)'
-          }
-        />
-        <KPICard
-          label="最高消耗模型"
-          value={topModel ? topModel.model : '—'}
-          sub={topModel ? `${fmtUsd(topModel.estimatedUsd)} · ${fmtInt(topModel.requests)} 次` : undefined}
-          valueColor="text-warning"
-          tone="var(--warning)"
-        />
+      <div className="grid gap-3 lg:grid-cols-12">
+        <div className="lg:col-span-4">
+          <KPICard
+            hero
+            label="估算 API 总价值"
+            value={totals.totalEstimatedUsd != null ? fmtUsd(totals.totalEstimatedUsd) : '—'}
+            sub="按公开文档单价计算，不等同于发票"
+            valueColor="text-accent"
+            tone="var(--accent)"
+          />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 lg:col-span-8">
+          <KPICard
+            label="总请求行数"
+            value={totals.rows != null ? fmtInt(totals.rows) : '—'}
+            sub={`未识别模型：${totals.unknownModelRows ?? 0} 行`}
+            valueColor="text-violet"
+            tone="var(--violet)"
+          />
+          <KPICard
+            label="总 Token 消耗"
+            value={fmtTokens(totalTokens)}
+            sub={`Cache Read ${fmtTokens(totalCacheRead)}`}
+            valueColor="text-info"
+            tone="var(--info)"
+          />
+          <KPICard
+            label="缓存命中率"
+            value={fmtPercent(cacheHitRate)}
+            sub="Cache Read / Total Input"
+            valueColor={
+              cacheHitRate > 0.7
+                ? 'text-accent'
+                : cacheHitRate > 0.5
+                  ? 'text-warning'
+                  : 'text-danger'
+            }
+            tone={
+              cacheHitRate > 0.7
+                ? 'var(--accent)'
+                : cacheHitRate > 0.5
+                  ? 'var(--warning)'
+                  : 'var(--danger)'
+            }
+          />
+          <KPICard
+            label="最高消耗模型"
+            value={topModel ? topModel.model : '—'}
+            sub={
+              topModel
+                ? `${fmtUsd(topModel.estimatedUsd)} · ${fmtInt(topModel.requests)} 次`
+                : undefined
+            }
+            valueColor="text-warning"
+            tone="var(--warning)"
+          />
+        </div>
       </div>
     </div>
   )

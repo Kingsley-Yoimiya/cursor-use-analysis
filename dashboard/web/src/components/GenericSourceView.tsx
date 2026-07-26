@@ -87,7 +87,7 @@ function KPICard({
 }) {
   return (
     <div
-      className={`rounded-xl border border-line bg-surface/60 p-5 shadow-theme
+      className={`panel p-4
         relative overflow-hidden border-l-4 ${accent}`}
     >
       <p className="text-xs font-medium uppercase tracking-widest text-fg-faint">
@@ -196,7 +196,7 @@ export function GenericSourceView({
 
   if (loading) {
     return (
-      <div className="rounded-xl border border-line bg-surface/40 p-8 text-sm text-fg-muted">
+      <div className="panel bg-surface-2 p-8 text-sm text-fg-muted">
         加载插件数据…
       </div>
     )
@@ -289,7 +289,7 @@ export function GenericSourceView({
         />
       </div>
 
-      <section className="rounded-xl border border-line bg-surface/40 p-4">
+      <section className="panel bg-surface-2 p-4">
         <h3 className="mb-3 text-xs font-medium uppercase tracking-widest text-fg-faint">
           按日 Token
         </h3>
@@ -321,7 +321,7 @@ export function GenericSourceView({
         )}
       </section>
 
-      <section className="rounded-xl border border-line bg-surface/40 overflow-hidden">
+      <section className="panel bg-surface-2 overflow-hidden">
         <div className="px-4 py-3 border-b border-line">
           <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
             按模型

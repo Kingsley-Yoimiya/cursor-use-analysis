@@ -10,12 +10,17 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from 'recharts'
 import { useChartColors } from '../context/ThemeContext'
-
-// ────────── 类型定义 ──────────
+import {
+  ChartLegendRow,
+  ChartPanel,
+  ChartTooltipShell,
+  chartCursorFill,
+  chartGridProps,
+  chartTickStyle,
+} from '../lib/chartChrome'
 
 interface DailyEntry {
   date: string
@@ -26,8 +31,6 @@ interface DailyEntry {
 type ViewMode = 'usd' | 'tokens'
 
 const MAX_MODELS = 8
-
-// ────────── 工具函数 ──────────
 
 function fmtDate(d: string): string {
   const parts = d.split('-')
@@ -41,8 +44,6 @@ function fmtTok(n: number): string {
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
   return String(n)
 }
-
-// ────────── 自定义 Tooltip ──────────
 
 interface TooltipPayloadItem {
   value: number
@@ -63,51 +64,59 @@ function CustomTooltip({ active, payload, label, mode }: CustomTooltipProps) {
   const total = payload.reduce((s, p) => s + (p.value ?? 0), 0)
   const sorted = [...payload].reverse().filter((p) => p.value > 0)
   return (
-    <div className="rounded-lg border border-line bg-elevated px-3 py-2 shadow-theme text-xs min-w-[180px] max-h-64 overflow-y-auto">
-      <p className="mb-2 font-medium text-fg-muted">{label}</p>
-      {sorted.map((p) => (
-        <div key={p.dataKey} className="flex justify-between gap-4 mb-0.5">
-          <span className="truncate max-w-[120px]" style={{ color: p.color }}>{p.name}</span>
-          <span className="font-mono text-fg shrink-0">
-            {mode === 'usd' ? `$${p.value.toFixed(3)}` : fmtTok(p.value)}
-          </span>
-        </div>
-      ))}
-      <div className="mt-1.5 border-t border-line pt-1 flex justify-between">
+    <ChartTooltipShell label={label}>
+      <div className="max-h-56 overflow-y-auto">
+        {sorted.map((p) => (
+          <div key={p.dataKey} className="mb-0.5 flex justify-between gap-4">
+            <span className="max-w-[120px] truncate text-fg-muted">{p.name}</span>
+            <span className="shrink-0 font-mono tabular-nums text-fg">
+              {mode === 'usd' ? `$${p.value.toFixed(3)}` : fmtTok(p.value)}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-1.5 flex justify-between border-t border-line pt-1">
         <span className="text-fg-faint">合计</span>
-        <span className="font-mono text-fg">
+        <span className="font-mono tabular-nums text-fg">
           {mode === 'usd' ? `$${total.toFixed(3)}` : fmtTok(total)}
         </span>
       </div>
-    </div>
+    </ChartTooltipShell>
   )
 }
 
-// ────────── 自定义图例 ──────────
-
-interface LegendPayloadItem {
-  color: string
-  value: string
-}
-
-function CustomLegend({ payload }: { payload?: LegendPayloadItem[] }) {
-  if (!payload) return null
+function ModeToggle({
+  mode,
+  setMode,
+}: {
+  mode: ViewMode
+  setMode: (m: ViewMode) => void
+}) {
   return (
-    <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 mt-3 px-2">
-      {payload.map((entry) => (
-        <span key={entry.value} className="flex items-center gap-1.5 text-[11px] text-fg-muted max-w-[180px]">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-sm shrink-0"
-            style={{ backgroundColor: entry.color }}
-          />
-          <span className="truncate">{entry.value}</span>
-        </span>
-      ))}
+    <div className="toolbar-cluster text-[10px]">
+      <button
+        type="button"
+        onClick={() => setMode('usd')}
+        className={`ui-press h-6 px-2 ${
+          mode === 'usd' ? 'bg-accent text-accent-fg' : 'text-fg-muted hover:text-fg'
+        }`}
+        style={{ borderRadius: 'var(--radius-sm)' }}
+      >
+        USD
+      </button>
+      <button
+        type="button"
+        onClick={() => setMode('tokens')}
+        className={`ui-press h-6 px-2 ${
+          mode === 'tokens' ? 'bg-accent text-accent-fg' : 'text-fg-muted hover:text-fg'
+        }`}
+        style={{ borderRadius: 'var(--radius-sm)' }}
+      >
+        Tokens
+      </button>
     </div>
   )
 }
-
-// ────────── 主组件 ──────────
 
 interface ModelDetailedChartProps {
   daily: DailyEntry[] | null
@@ -118,31 +127,29 @@ export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
   const chartColors = useChartColors()
   const palette = useMemo(
     () => [
+      chartColors.chart1,
+      chartColors.chart2,
+      chartColors.chart3,
+      chartColors.chart4,
+      chartColors.chart5,
       chartColors.poolAuto,
       chartColors.poolFirst,
       chartColors.poolApi,
-      chartColors.chart1,
-      chartColors.chart4,
-      chartColors.chart3,
-      chartColors.chart2,
-      chartColors.chart5,
-      chartColors.accent,
-      chartColors.muted,
     ],
     [chartColors],
   )
   const othersColor = chartColors.muted
+  const tick = chartTickStyle(chartColors.tick)
 
-  // 计算各模型总量，取 Top N
   const topModels = useMemo(() => {
-    if (!daily) return []
+    if (!daily || daily.length === 0) return [] as string[]
     const totals: Record<string, number> = {}
-    daily.forEach((d) => {
-      const byModel = mode === 'usd' ? (d.costByModel ?? {}) : (d.tokensByModel ?? {})
-      Object.entries(byModel).forEach(([m, v]) => {
+    for (const d of daily) {
+      const src = mode === 'usd' ? d.costByModel : d.tokensByModel
+      for (const [m, v] of Object.entries(src ?? {})) {
         totals[m] = (totals[m] ?? 0) + v
-      })
-    })
+      }
+    }
     return Object.entries(totals)
       .sort((a, b) => b[1] - a[1])
       .slice(0, MAX_MODELS)
@@ -151,44 +158,41 @@ export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
 
   const hasOthers = useMemo(() => {
     if (!daily) return false
-    const allModels = new Set<string>()
-    daily.forEach((d) => {
-      Object.keys(mode === 'usd' ? (d.costByModel ?? {}) : (d.tokensByModel ?? {})).forEach((m) => allModels.add(m))
-    })
-    return allModels.size > MAX_MODELS
-  }, [daily, mode])
+    for (const d of daily) {
+      const src = mode === 'usd' ? d.costByModel : d.tokensByModel
+      for (const m of Object.keys(src ?? {})) {
+        if (!topModels.includes(m)) return true
+      }
+    }
+    return false
+  }, [daily, mode, topModels])
 
   const chartData = useMemo(() => {
     if (!daily) return []
     return daily.map((d) => {
-      const byModel = mode === 'usd' ? (d.costByModel ?? {}) : (d.tokensByModel ?? {})
-      const entry: Record<string, number | string> = { date: fmtDate(d.date) }
-      let othersTotal = 0
-      Object.entries(byModel).forEach(([m, v]) => {
-        if (topModels.includes(m)) {
-          entry[m] = (entry[m] as number ?? 0) + v
-        } else {
-          othersTotal += v
-        }
-      })
-      topModels.forEach((m) => {
-        if (entry[m] === undefined) entry[m] = 0
-      })
-      if (hasOthers) entry['其他'] = othersTotal
-      return entry
+      const src = mode === 'usd' ? d.costByModel : d.tokensByModel
+      const row: Record<string, string | number> = { date: fmtDate(d.date) }
+      let others = 0
+      for (const [m, v] of Object.entries(src ?? {})) {
+        if (topModels.includes(m)) row[m] = v
+        else others += v
+      }
+      for (const m of topModels) {
+        if (row[m] == null) row[m] = 0
+      }
+      if (hasOthers) row['其他'] = others
+      return row
     })
   }, [daily, mode, topModels, hasOthers])
 
   if (!daily) {
-    return (
-      <div className="h-80 animate-pulse rounded-xl bg-surface-2 border border-line" />
-    )
+    return <div className="h-80 animate-pulse panel bg-surface-2" />
   }
 
   if (daily.length === 0 || topModels.length === 0) {
     return (
-      <div className="rounded-xl border border-line bg-surface/60 p-5 flex items-center justify-center h-40">
-        <p className="text-fg-faint text-sm">暂无数据</p>
+      <div className="panel flex h-40 items-center justify-center p-4">
+        <p className="text-sm text-fg-faint">暂无数据</p>
       </div>
     )
   }
@@ -206,59 +210,45 @@ export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
   const allKeys = [...topModels, ...(hasOthers ? ['其他'] : [])]
 
   return (
-    <div className="rounded-xl border border-line bg-surface/60 p-5 shadow-theme">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
-          每日各模型消耗细分（Top {topModels.length}）
-        </h3>
-        <div className="flex rounded-lg overflow-hidden border border-line text-xs">
-          <button
-            onClick={() => setMode('usd')}
-            className={`px-3 py-1 transition-colors ${
-              mode === 'usd'
-                ? 'bg-accent text-accent-fg'
-                : 'bg-surface-2 text-fg-muted hover:text-fg hover:bg-surface'
-            }`}
-          >
-            USD
-          </button>
-          <button
-            onClick={() => setMode('tokens')}
-            className={`px-3 py-1 transition-colors ${
-              mode === 'tokens'
-                ? 'bg-info text-white'
-                : 'bg-surface-2 text-fg-muted hover:text-fg hover:bg-surface'
-            }`}
-          >
-            Tokens
-          </button>
-        </div>
-      </div>
-
-      <ResponsiveContainer width="100%" height={320}>
+    <ChartPanel
+      title={`每日各模型消耗细分（Top ${topModels.length}）`}
+      actions={<ModeToggle mode={mode} setMode={setMode} />}
+    >
+      <ChartLegendRow
+        items={allKeys.map((model, i) => ({
+          color: model === '其他' ? othersColor : palette[i % palette.length],
+          label: model,
+        }))}
+      />
+      <ResponsiveContainer width="100%" height={300}>
         <BarChart
           data={chartData}
-          margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
-          barCategoryGap="20%"
+          margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
+          barCategoryGap="28%"
         >
-          <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
+          <CartesianGrid {...chartGridProps(chartColors.grid)} />
           <XAxis
             dataKey="date"
-            tick={{ fill: chartColors.tick, fontSize: 11 }}
+            tick={tick}
             tickLine={false}
-            axisLine={{ stroke: chartColors.grid }}
+            axisLine={{ stroke: chartColors.grid, strokeOpacity: 0.7 }}
             interval="preserveStartEnd"
+            minTickGap={28}
           />
           <YAxis
-            tick={{ fill: chartColors.tick, fontSize: 11 }}
+            tick={tick}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(v: number) => mode === 'usd' ? `$${v.toFixed(2)}` : fmtTok(v)}
-            width={60}
+            tickFormatter={(v: number) =>
+              mode === 'usd' ? `$${v.toFixed(2)}` : fmtTok(v)
+            }
+            width={52}
           />
-          <Tooltip content={renderTooltip} cursor={{ fill: chartColors.cursor }} />
-          <Legend content={<CustomLegend />} />
-
+          <Tooltip
+            content={renderTooltip}
+            cursor={chartCursorFill(chartColors.cursor)}
+            isAnimationActive={false}
+          />
           {allKeys.map((model, i) => (
             <Bar
               key={model}
@@ -266,11 +256,11 @@ export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
               name={model}
               stackId="a"
               fill={model === '其他' ? othersColor : palette[i % palette.length]}
-              radius={i === allKeys.length - 1 ? [3, 3, 0, 0] : undefined}
+              isAnimationActive={false}
             />
           ))}
         </BarChart>
       </ResponsiveContainer>
-    </div>
+    </ChartPanel>
   )
 }
