@@ -1,10 +1,13 @@
 /**
  * KPI 概览卡片组件
  * 从 /api/summary 获取数据，展示核心用量指标
+ * 同步成功时可在价值 / 行数卡片上短暂展示增量动向
  */
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { mergeSummaryByModel, type FoldModelEntry } from '../lib/mergeDaily'
+import { fmtElapsed, fmtTokens } from '../lib/formatTokens'
+import type { SyncPulse } from '../lib/syncPulse'
 
 // ────────── 类型定义 ──────────
 
@@ -52,13 +55,6 @@ function fmtInt(n: number): string {
   return n.toLocaleString('en-US')
 }
 
-function fmtTokens(n: number): string {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return String(n)
-}
-
 function fmtPercent(n: number): string {
   return `${(n * 100).toFixed(1)}%`
 }
@@ -71,6 +67,7 @@ interface KPICardProps {
   sub?: string
   valueColor?: string
   tone?: string
+  delta?: string | null
 }
 
 function KPICard({
@@ -80,6 +77,7 @@ function KPICard({
   valueColor = 'text-fg',
   tone = 'var(--accent)',
   hero = false,
+  delta = null,
 }: KPICardProps & { hero?: boolean }) {
   return (
     <div
@@ -92,6 +90,11 @@ function KPICard({
       >
         {value}
       </p>
+      {delta ? (
+        <span key={delta} className="kpi-delta" role="status">
+          {delta}
+        </span>
+      ) : null}
       {sub && <p className="mt-1 text-[11px] text-fg-muted leading-snug">{sub}</p>}
     </div>
   )
@@ -99,16 +102,30 @@ function KPICard({
 
 // ────────── KPI 卡片区域主组件 ──────────
 
+const PULSE_HOLD_MS = 20_000
+
 export function KPICards({
   refreshKey,
   foldPluginIds = [],
+  syncPulse = null,
 }: {
   refreshKey?: number
   foldPluginIds?: string[]
+  syncPulse?: SyncPulse | null
 }) {
   const [data, setData] = useState<SummaryData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activePulse, setActivePulse] = useState<SyncPulse | null>(null)
+
+  useEffect(() => {
+    if (!syncPulse) return
+    setActivePulse(syncPulse)
+    const t = window.setTimeout(() => {
+      setActivePulse((prev) => (prev?.id === syncPulse.id ? null : prev))
+    }, PULSE_HOLD_MS)
+    return () => window.clearTimeout(t)
+  }, [syncPulse])
 
   useEffect(() => {
     setLoading(true)
@@ -188,30 +205,62 @@ export function KPICards({
   const models = data.byModel ?? []
 
   const totalTokens = models.reduce(
-    (sum, m) => sum + m.tokens.cacheRead + m.tokens.noCache + m.tokens.cacheWrite + m.tokens.output,
+    (sum, m) =>
+      sum +
+      m.tokens.cacheRead +
+      m.tokens.noCache +
+      m.tokens.cacheWrite +
+      m.tokens.output,
     0,
   )
   const totalCacheRead = models.reduce((sum, m) => sum + m.tokens.cacheRead, 0)
   const totalInput = models.reduce(
-    (sum, m) => sum + m.tokens.cacheRead + m.tokens.noCache + m.tokens.cacheWrite,
+    (sum, m) =>
+      sum + m.tokens.cacheRead + m.tokens.noCache + m.tokens.cacheWrite,
     0,
   )
   const cacheHitRate = totalInput > 0 ? totalCacheRead / totalInput : 0
 
-  const topModel = models.length > 0
-    ? models.reduce((a, b) => (a.estimatedUsd > b.estimatedUsd ? a : b))
-    : null
+  const topModel =
+    models.length > 0
+      ? models.reduce((a, b) => (a.estimatedUsd > b.estimatedUsd ? a : b))
+      : null
 
   const generatedAt = data.generatedAt
-    ? new Date(data.generatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+    ? new Date(data.generatedAt).toLocaleString('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+      })
     : null
+
+  const elapsed = activePulse
+    ? fmtElapsed(activePulse.elapsedMs)
+    : ''
+
+  let valueDelta: string | null = null
+  let rowsDelta: string | null = null
+  if (activePulse) {
+    if (activePulse.firstSync) {
+      valueDelta = `已同步 · 合计 ${fmtTokens(activePulse.totalTokens || totalTokens)}`
+      rowsDelta = '首次同步'
+    } else if (activePulse.addedTokens <= 0 && activePulse.addedRows <= 0) {
+      valueDelta = elapsed ? `距上次 ${elapsed} · 无新增` : '无新增用量'
+      rowsDelta = '+0'
+    } else {
+      valueDelta = `+${fmtTokens(activePulse.addedTokens)}${
+        elapsed ? ` · ${elapsed}` : ''
+      }`
+      rowsDelta = `+${fmtInt(activePulse.addedRows)}`
+    }
+  }
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="section-title">KPI 概览</h2>
         {generatedAt && (
-          <span className="text-[11px] text-fg-faint">数据生成于 {generatedAt}</span>
+          <span className="text-[11px] text-fg-faint">
+            数据生成于 {generatedAt}
+          </span>
         )}
       </div>
       <div className="grid gap-3 lg:grid-cols-12">
@@ -219,10 +268,15 @@ export function KPICards({
           <KPICard
             hero
             label="估算 API 总价值"
-            value={totals.totalEstimatedUsd != null ? fmtUsd(totals.totalEstimatedUsd) : '—'}
+            value={
+              totals.totalEstimatedUsd != null
+                ? fmtUsd(totals.totalEstimatedUsd)
+                : '—'
+            }
             sub="按公开文档单价计算，不等同于发票"
             valueColor="text-accent"
             tone="var(--accent)"
+            delta={valueDelta}
           />
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 lg:col-span-8">
@@ -232,6 +286,7 @@ export function KPICards({
             sub={`未识别模型：${totals.unknownModelRows ?? 0} 行`}
             valueColor="text-violet"
             tone="var(--violet)"
+            delta={rowsDelta}
           />
           <KPICard
             label="总 Token 消耗"

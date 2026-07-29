@@ -22,7 +22,9 @@ import {
 import { ThemeProvider, useTheme } from './context/ThemeContext'
 import { ThemePalettePicker } from './components/ThemePalettePicker'
 import { DataSyncBar } from './components/DataSyncBar'
+import { UsageRhythmSection } from './components/UsageRhythmSection'
 import { mergeDailyEntries, type DailyEntry as MergeDailyEntry } from './lib/mergeDaily'
+import type { SyncPulse } from './lib/syncPulse'
 
 // ────────── 类型定义 ──────────
 
@@ -99,6 +101,7 @@ function AppShell() {
 
   // ── 刷新数据（由 DataSyncBar 触发 bumpRefresh）──
   const [refreshKey, setRefreshKey] = useState(0)
+  const [syncPulse, setSyncPulse] = useState<SyncPulse | null>(null)
   const bumpRefresh = () => {
     setDailyError(null)
     setRefreshKey((k) => k + 1)
@@ -314,7 +317,10 @@ function AppShell() {
               onChange={setMerge}
               compact
             />
-            <DataSyncBar onReload={bumpRefresh} />
+            <DataSyncBar
+              onReload={bumpRefresh}
+              onSyncSuccess={setSyncPulse}
+            />
 
             <div className="toolbar-cluster">
               <ThemePalettePicker />
@@ -387,7 +393,11 @@ function AppShell() {
               </p>
             )}
             <section>
-              <KPICards refreshKey={refreshKey} foldPluginIds={mergeSourceIds} />
+              <KPICards
+                refreshKey={refreshKey}
+                foldPluginIds={mergeSourceIds}
+                syncPulse={syncPulse}
+              />
             </section>
 
             {/* 日期范围筛选器 */}
@@ -458,6 +468,16 @@ function AppShell() {
                   : '加载中…'}
               </span>
             </section>
+
+            {/* 使用节奏：热力 + 分布对比 */}
+            {!dailyError && (
+              <UsageRhythmSection
+                refreshKey={refreshKey}
+                startDate={startDate}
+                endDate={endDate}
+                daily={displayDaily}
+              />
+            )}
 
             {/* 趋势图表区域 */}
             {dailyError ? (

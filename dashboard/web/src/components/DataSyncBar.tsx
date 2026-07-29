@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
+import type { SyncPulse } from '../lib/syncPulse'
 
 interface FileMeta {
   exists: boolean
@@ -25,6 +26,16 @@ interface DataStatus {
   } | null
 }
 
+interface SyncDelta {
+  sinceIso?: string | null
+  elapsedMs?: number | null
+  addedRows?: number
+  addedTokens?: number
+  totalTokens?: number
+  totalRows?: number
+  firstSync?: boolean
+}
+
 interface SyncResponse {
   ok: boolean
   ms?: number
@@ -33,6 +44,7 @@ interface SyncResponse {
   detail?: string
   steps?: { id: string; ok: boolean; ms: number }[]
   partial?: boolean
+  delta?: SyncDelta
 }
 
 interface ServerCaps {
@@ -80,28 +92,30 @@ async function readServerCaps(): Promise<ServerCaps | null> {
   }
 }
 
-function showNotice(
-  setBanner: Dispatch<
-    SetStateAction<{ kind: 'ok' | 'err' | 'info'; text: string } | null>
-  >,
-  kind: 'ok' | 'err' | 'info',
-  text: string,
-) {
-  setBanner({ kind, text })
-  window.setTimeout(() => {
-    setBanner((prev) => (prev?.text === text ? null : prev))
-  }, kind === 'err' ? 12000 : 5000)
+function deltaToPulse(delta: SyncDelta | undefined, syncMs?: number): SyncPulse {
+  return {
+    id: Date.now(),
+    addedRows: delta?.addedRows ?? 0,
+    addedTokens: delta?.addedTokens ?? 0,
+    totalTokens: delta?.totalTokens ?? 0,
+    elapsedMs: delta?.elapsedMs ?? null,
+    firstSync: Boolean(delta?.firstSync || !delta?.sinceIso),
+    syncMs,
+  }
 }
 
-export function DataSyncBar({ onReload }: { onReload: () => void }) {
+export function DataSyncBar({
+  onReload,
+  onSyncSuccess,
+}: {
+  onReload: () => void
+  onSyncSuccess?: (pulse: SyncPulse) => void
+}) {
   const [status, setStatus] = useState<DataStatus | null>(null)
   const [caps, setCaps] = useState<ServerCaps | null>(null)
   const [reloading, setReloading] = useState(false)
   const [syncing, setSyncing] = useState(false)
-  const [banner, setBanner] = useState<{
-    kind: 'ok' | 'err' | 'info'
-    text: string
-  } | null>(null)
+  const [inlineErr, setInlineErr] = useState<string | null>(null)
 
   const fetchStatus = useCallback(async () => {
     const nextCaps = await readServerCaps()
@@ -128,19 +142,16 @@ export function DataSyncBar({ onReload }: { onReload: () => void }) {
 
   const handleReload = async () => {
     setReloading(true)
-    setBanner(null)
+    setInlineErr(null)
     try {
       onReload()
       if (caps?.reload) {
         await axios.post('/api/reload')
       }
       await fetchStatus()
-      showNotice(setBanner, 'ok', '已重新加载图表数据')
     } catch (e) {
       onReload()
-      showNotice(
-        setBanner,
-        'err',
+      setInlineErr(
         '重新加载失败：' + (e instanceof Error ? e.message : String(e)),
       )
     } finally {
@@ -149,46 +160,37 @@ export function DataSyncBar({ onReload }: { onReload: () => void }) {
   }
 
   const handleSync = async () => {
-    const endpoint = caps?.sync ? '/api/sync' : caps?.refresh ? '/api/refresh' : null
+    const endpoint = caps?.sync
+      ? '/api/sync'
+      : caps?.refresh
+        ? '/api/refresh'
+        : null
     if (!endpoint) {
-      showNotice(
-        setBanner,
-        'err',
+      setInlineErr(
         '后端缺少同步接口，请重启 dashboard/server（./dashboard/start-dev.sh）',
       )
       return
     }
 
     setSyncing(true)
-    setBanner(null)
+    setInlineErr(null)
     try {
       const r = await axios.post<SyncResponse>(endpoint, null, {
         timeout: 200_000,
       })
       await fetchStatus()
       if (r.data.ok) {
+        onSyncSuccess?.(deltaToPulse(r.data.delta, r.data.ms))
         onReload()
-        const ms = r.data.ms != null ? `${(r.data.ms / 1000).toFixed(1)}s` : ''
-        showNotice(
-          setBanner,
-          'ok',
-          `已从 Cursor 同步${ms ? `（${ms}）` : ''}`,
-        )
       } else {
-        showNotice(
-          setBanner,
-          'err',
-          r.data.hint || r.data.error || '同步失败',
-        )
+        setInlineErr(r.data.hint || r.data.error || '同步失败')
       }
     } catch (e) {
       if (axios.isAxiosError(e) && e.response?.data) {
         const d = e.response.data as SyncResponse
-        showNotice(setBanner, 'err', d.hint || d.error || '同步失败')
+        setInlineErr(d.hint || d.error || '同步失败')
       } else {
-        showNotice(
-          setBanner,
-          'err',
+        setInlineErr(
           '同步失败：' + (e instanceof Error ? e.message : String(e)),
         )
       }
@@ -220,7 +222,7 @@ export function DataSyncBar({ onReload }: { onReload: () => void }) {
     (caps.dataStatus && (!auth?.exists || session?.expired === true))
 
   return (
-    <>
+    <div className="flex flex-col items-end gap-1 max-w-[min(100%,22rem)]">
       <div className="flex items-center gap-2">
         <span
           className="hidden lg:inline text-[11px] text-fg-faint max-w-[180px] truncate"
@@ -257,21 +259,15 @@ export function DataSyncBar({ onReload }: { onReload: () => void }) {
           {syncing ? '同步中…' : '从 Cursor 同步'}
         </button>
       </div>
-
-      {banner && (
-        <div
-          className={`fixed bottom-4 right-4 z-50 max-w-md px-4 py-3 rounded-lg border text-sm ${
-            banner.kind === 'ok'
-              ? 'bg-accent-soft border-line text-accent'
-              : banner.kind === 'err'
-                ? 'bg-danger-soft border-danger-border text-danger'
-                : 'bg-surface-2 border-line text-fg'
-          }`}
-          role="status"
+      {inlineErr && (
+        <p
+          className="text-[11px] text-danger text-right leading-snug max-w-full"
+          role="alert"
+          title={inlineErr}
         >
-          {banner.text}
-        </div>
+          {inlineErr}
+        </p>
       )}
-    </>
+    </div>
   )
 }

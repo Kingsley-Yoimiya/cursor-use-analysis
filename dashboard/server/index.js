@@ -417,6 +417,42 @@ function dayKeyFromDateCell(dateStr) {
   }
 }
 
+const SHANGHAI_TZ = 'Asia/Shanghai';
+
+/**
+ * 将 CSV Date 解析为 Asia/Shanghai 日历日 + 小时。
+ * @param {string} dateStr
+ * @returns {{ date: string, hour: number } | null}
+ */
+function shanghaiDayHour(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(String(dateStr).trim());
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: SHANGHAI_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(d);
+  const get = (type) => parts.find((p) => p.type === type)?.value;
+  const year = get('year');
+  const month = get('month');
+  const day = get('day');
+  const hourRaw = get('hour');
+  if (!year || !month || !day || hourRaw == null) return null;
+  let hour = Number.parseInt(hourRaw, 10);
+  // 少数环境对 24:00 边界返回 24
+  if (hour === 24) hour = 0;
+  if (!Number.isFinite(hour) || hour < 0 || hour > 23) return null;
+  return { date: `${year}-${month}-${day}`, hour };
+}
+
+function todayShanghai() {
+  return shanghaiDayHour(new Date().toISOString())?.date ?? null;
+}
+
 const EXPORT_EXTRA_HEADERS = [
   'Day',
   'Estimated USD',
@@ -574,6 +610,122 @@ app.get('/api/daily', async (_req, res) => {
     `[api/daily] 200 ok days=${daily.length} rowsTotal=${daily.reduce((s, d) => s + d.rows, 0)} ${ms}ms`,
   );
   return res.json({ ok: true, daily, ms });
+});
+
+app.get('/api/hourly', async (req, res) => {
+  const t0 = Date.now();
+  if (!fs.existsSync(USAGE_CSV)) {
+    return res.status(404).json({
+      ok: false,
+      error: '找不到 usage CSV',
+      path: USAGE_CSV,
+    });
+  }
+
+  let daysLimit = Number(req.query.days);
+  if (!Number.isFinite(daysLimit) || daysLimit <= 0) daysLimit = 90;
+  daysLimit = Math.min(180, Math.round(daysLimit));
+
+  const startQ =
+    typeof req.query.start === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.start)
+      ? req.query.start
+      : null;
+  const endQ =
+    typeof req.query.end === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.end)
+      ? req.query.end
+      : null;
+
+  /**
+   * @type {Map<string, { date: string, hours: number[], totalTokens: number, rows: number }>}
+   */
+  const byDay = new Map();
+
+  try {
+    await new Promise((resolve, reject) => {
+      const stream = createReadStream(USAGE_CSV, { encoding: 'utf8' });
+      stream.on('error', reject);
+      stream
+        .pipe(csv())
+        .on('data', (row) => {
+          const local = shanghaiDayHour(row[CSV_COL.date]);
+          if (!local) return;
+
+          const cacheRead = parseIntField(row[CSV_COL.cacheRead]);
+          const inputCacheWrite = parseIntField(row[CSV_COL.inCacheWrite]);
+          const inputNoCache = parseIntField(row[CSV_COL.inNoCache]);
+          const outputTokens = parseIntField(row[CSV_COL.output]);
+          const totalTokens =
+            parseIntField(row[CSV_COL.total]) ||
+            cacheRead + inputCacheWrite + inputNoCache + outputTokens;
+          const rowTokens =
+            cacheRead + inputCacheWrite + inputNoCache + outputTokens ||
+            totalTokens;
+
+          let agg = byDay.get(local.date);
+          if (!agg) {
+            agg = {
+              date: local.date,
+              hours: Array.from({ length: 24 }, () => 0),
+              totalTokens: 0,
+              rows: 0,
+            };
+            byDay.set(local.date, agg);
+          }
+          agg.hours[local.hour] += rowTokens;
+          agg.totalTokens += rowTokens;
+          agg.rows += 1;
+        })
+        .on('end', resolve)
+        .on('error', reject);
+    });
+  } catch (e) {
+    const ms = Date.now() - t0;
+    console.error(`[api/hourly] 流处理失败 ${e?.message} ${ms}ms`);
+    return res.status(500).json({
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+      path: USAGE_CSV,
+      ms,
+    });
+  }
+
+  let days = [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
+
+  if (startQ || endQ) {
+    days = days.filter((d) => {
+      if (startQ && d.date < startQ) return false;
+      if (endQ && d.date > endQ) return false;
+      return true;
+    });
+  } else if (days.length > daysLimit) {
+    days = days.slice(-daysLimit);
+  }
+
+  let csvMtimeIso = null;
+  try {
+    csvMtimeIso = fs.statSync(USAGE_CSV).mtime.toISOString();
+  } catch {
+    /* ignore */
+  }
+
+  const ms = Date.now() - t0;
+  console.log(
+    `[api/hourly] 200 ok days=${days.length} rowsTotal=${days.reduce((s, d) => s + d.rows, 0)} ${ms}ms`,
+  );
+  return res.json({
+    ok: true,
+    timezone: SHANGHAI_TZ,
+    today: todayShanghai(),
+    days,
+    meta: {
+      generatedAt: new Date().toISOString(),
+      csvMtimeIso,
+      daysLimit: startQ || endQ ? null : daysLimit,
+      start: startQ,
+      end: endQ,
+    },
+    ms,
+  });
 });
 
 app.get('/api/period-stats', async (req, res) => {
@@ -852,6 +1004,7 @@ app.get('/api/health', (_req, res) => {
     features: [
       'summary',
       'daily',
+      'hourly',
       'period-stats',
       'reimbursement-profile',
       'export-usage-with-cost-csv',
@@ -885,7 +1038,10 @@ app.post('/api/reload', (_req, res) => {
 
 app.post('/api/sync', async (_req, res) => {
   console.log('[api/sync] 开始从 Cursor 拉取…');
-  const result = await syncFromCursor(REPO_ROOT, { reloadRates: reloadRatesConfig });
+  const result = await syncFromCursor(REPO_ROOT, {
+    reloadRates: reloadRatesConfig,
+    usageCsvPath: USAGE_CSV,
+  });
   if (result.ok) {
     const pluginSteps = await runEnabledPluginSyncSteps(REPO_ROOT, loadedPlugins);
     result.pluginSteps = pluginSteps;
@@ -899,7 +1055,10 @@ app.post('/api/sync', async (_req, res) => {
 /** @deprecated 兼容旧前端；等价于 POST /api/sync */
 app.post('/api/refresh', async (_req, res) => {
   console.log('[api/refresh] 开始拉取最新数据...');
-  const result = await syncFromCursor(REPO_ROOT, { reloadRates: reloadRatesConfig });
+  const result = await syncFromCursor(REPO_ROOT, {
+    reloadRates: reloadRatesConfig,
+    usageCsvPath: USAGE_CSV,
+  });
   if (result.ok) {
     const pluginSteps = await runEnabledPluginSyncSteps(REPO_ROOT, loadedPlugins);
     console.log(`[api/refresh] 200 ok 刷新成功 ${result.ms}ms`);
@@ -908,6 +1067,7 @@ app.post('/api/refresh', async (_req, res) => {
       ms: result.ms,
       steps: result.steps,
       pluginSteps,
+      delta: result.delta,
     });
   }
   console.error(`[api/refresh] 刷新失败: ${result.error} ${result.ms}ms`);

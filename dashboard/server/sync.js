@@ -1,9 +1,96 @@
-import fs from 'fs';
+import fs, { createReadStream } from 'fs';
 import path from 'path';
 import { exec, execSync } from 'child_process';
 import util from 'util';
+import csv from 'csv-parser';
 
 const execPromise = util.promisify(exec);
+
+const CSV_TOKEN_COLS = {
+  date: 'Date',
+  inCacheWrite: 'Input (w/ Cache Write)',
+  inNoCache: 'Input (w/o Cache Write)',
+  cacheRead: 'Cache Read',
+  output: 'Output Tokens',
+  total: 'Total Tokens',
+};
+
+function parseIntField(v, fallback = 0) {
+  if (v == null || v === '') return fallback;
+  const n = Number.parseInt(String(v).replace(/,/g, ''), 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function rowTokenTotal(row) {
+  const cacheRead = parseIntField(row[CSV_TOKEN_COLS.cacheRead]);
+  const inputCacheWrite = parseIntField(row[CSV_TOKEN_COLS.inCacheWrite]);
+  const inputNoCache = parseIntField(row[CSV_TOKEN_COLS.inNoCache]);
+  const outputTokens = parseIntField(row[CSV_TOKEN_COLS.output]);
+  const total =
+    parseIntField(row[CSV_TOKEN_COLS.total]) ||
+    cacheRead + inputCacheWrite + inputNoCache + outputTokens;
+  return (
+    total ||
+    cacheRead + inputCacheWrite + inputNoCache + outputTokens
+  );
+}
+
+/**
+ * 扫描 usage.csv：合计 + 自 sinceIso 之后的增量（按事件 Date）。
+ * @param {string} usageCsvPath
+ * @param {string | null} sinceIso
+ */
+export async function summarizeUsageCsv(usageCsvPath, sinceIso = null) {
+  if (!fs.existsSync(usageCsvPath)) {
+    return {
+      exists: false,
+      totalRows: 0,
+      totalTokens: 0,
+      addedRows: 0,
+      addedTokens: 0,
+    };
+  }
+
+  const sinceMs =
+    sinceIso != null && sinceIso !== ''
+      ? new Date(sinceIso).getTime()
+      : null;
+  const sinceOk = sinceMs != null && Number.isFinite(sinceMs);
+
+  let totalRows = 0;
+  let totalTokens = 0;
+  let addedRows = 0;
+  let addedTokens = 0;
+
+  await new Promise((resolve, reject) => {
+    const stream = createReadStream(usageCsvPath, { encoding: 'utf8' });
+    stream.on('error', reject);
+    stream
+      .pipe(csv())
+      .on('data', (row) => {
+        const tokens = rowTokenTotal(row);
+        totalRows += 1;
+        totalTokens += tokens;
+        if (!sinceOk) return;
+        const raw = row[CSV_TOKEN_COLS.date];
+        if (!raw) return;
+        const t = new Date(String(raw).trim()).getTime();
+        if (!Number.isFinite(t) || t <= sinceMs) return;
+        addedRows += 1;
+        addedTokens += tokens;
+      })
+      .on('end', resolve)
+      .on('error', reject);
+  });
+
+  return {
+    exists: true,
+    totalRows,
+    totalTokens,
+    addedRows,
+    addedTokens,
+  };
+}
 
 const AUTH_JSON = (repoRoot) => path.join(repoRoot, 'data', 'auth.json');
 const SYNC_STATUS_PATH = (repoRoot) =>
@@ -181,10 +268,15 @@ async function runNpmScript(script, repoRoot) {
   }
 }
 
-export async function syncFromCursor(repoRoot, { reloadRates }) {
+export async function syncFromCursor(repoRoot, { reloadRates, usageCsvPath }) {
   ensureProxyEnv();
   const t0 = Date.now();
   const steps = [];
+  const prevStatus = readSyncStatus(repoRoot);
+  const sinceIso =
+    prevStatus?.lastSuccessAt ||
+    (prevStatus?.ok ? prevStatus.updatedAt : null) ||
+    null;
 
   const exportStep = await runNpmScript('export', repoRoot);
   steps.push({ id: 'export', ...exportStep });
@@ -232,18 +324,53 @@ export async function syncFromCursor(repoRoot, { reloadRates }) {
 
   if (reloadRates) reloadRates();
 
+  const successAt = new Date().toISOString();
+  let delta = {
+    sinceIso,
+    elapsedMs:
+      sinceIso != null
+        ? Math.max(0, Date.now() - new Date(sinceIso).getTime())
+        : null,
+    addedRows: 0,
+    addedTokens: 0,
+    totalTokens: 0,
+    totalRows: 0,
+    firstSync: sinceIso == null,
+  };
+
+  if (usageCsvPath) {
+    try {
+      const summary = await summarizeUsageCsv(usageCsvPath, sinceIso);
+      delta = {
+        ...delta,
+        addedRows: sinceIso == null ? 0 : summary.addedRows,
+        addedTokens: sinceIso == null ? 0 : summary.addedTokens,
+        totalTokens: summary.totalTokens,
+        totalRows: summary.totalRows,
+      };
+    } catch (e) {
+      console.warn(`[sync] 用量增量统计失败: ${e?.message}`);
+    }
+  }
+
   const status = writeSyncStatus(repoRoot, {
     ok: true,
     ms: Date.now() - t0,
     error: null,
     hint: null,
     failedStep: null,
+    lastSuccessAt: successAt,
+    totalsAtSync: {
+      rows: delta.totalRows,
+      totalTokens: delta.totalTokens,
+    },
   });
 
   return {
     ok: true,
     ms: Date.now() - t0,
     steps,
+    delta,
     lastSync: status,
   };
 }
