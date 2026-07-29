@@ -236,20 +236,49 @@ export function KPICards({
     ? fmtElapsed(activePulse.elapsedMs)
     : ''
 
+  const fmtUsdDelta = (n: number) => {
+    const sign = n >= 0 ? '+' : ''
+    return `${sign}$${Math.abs(n).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`
+  }
+
   let valueDelta: string | null = null
   let rowsDelta: string | null = null
+  let tokenDelta: string | null = null
   if (activePulse) {
+    const timePart = elapsed ? `距上次 ${elapsed}` : ''
     if (activePulse.firstSync) {
-      valueDelta = `已同步 · 合计 ${fmtTokens(activePulse.totalTokens || totalTokens)}`
+      valueDelta = [
+        `已同步`,
+        activePulse.totalUsd > 0 ? fmtUsd(activePulse.totalUsd) : null,
+        fmtTokens(activePulse.totalTokens || totalTokens),
+      ]
+        .filter(Boolean)
+        .join(' · ')
       rowsDelta = '首次同步'
-    } else if (activePulse.addedTokens <= 0 && activePulse.addedRows <= 0) {
-      valueDelta = elapsed ? `距上次 ${elapsed} · 无新增` : '无新增用量'
+      tokenDelta = fmtTokens(activePulse.totalTokens || totalTokens)
+    } else if (
+      activePulse.addedUsd <= 0 &&
+      activePulse.addedTokens <= 0 &&
+      activePulse.addedRows <= 0
+    ) {
+      valueDelta = timePart ? `${timePart} · 无新增` : '无新增用量'
       rowsDelta = '+0'
+      tokenDelta = '+0'
     } else {
-      valueDelta = `+${fmtTokens(activePulse.addedTokens)}${
-        elapsed ? ` · ${elapsed}` : ''
-      }`
+      const parts = [
+        fmtUsdDelta(activePulse.addedUsd),
+        `+${fmtTokens(activePulse.addedTokens)}`,
+        timePart || null,
+      ].filter(Boolean)
+      if (activePulse.addonUsd > 0) {
+        parts.push(`含附加 ${fmtUsdDelta(activePulse.addonUsd)}`)
+      }
+      valueDelta = parts.join(' · ')
       rowsDelta = `+${fmtInt(activePulse.addedRows)}`
+      tokenDelta = `+${fmtTokens(activePulse.addedTokens)}`
     }
   }
 
@@ -294,6 +323,7 @@ export function KPICards({
             sub={`Cache Read ${fmtTokens(totalCacheRead)}`}
             valueColor="text-info"
             tone="var(--info)"
+            delta={tokenDelta}
           />
           <KPICard
             label="缓存命中率"

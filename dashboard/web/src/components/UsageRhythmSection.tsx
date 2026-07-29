@@ -1,6 +1,6 @@
 /**
  * Overview「使用节奏」：热力 + 点日曲线；拉取 /api/hourly
- * 大块内容可折叠
+ * 「合并附加用量」打开时叠入插件 cursor-hourly
  */
 import { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
@@ -8,12 +8,22 @@ import { CollapsibleSection } from './CollapsibleSection'
 import { HourlyDayChart } from './HourlyDayChart'
 import { HourlyHeatmapChart, type HourlyDay } from './HourlyHeatmapChart'
 import { UsageDistributionCompare } from './UsageDistributionCompare'
+import {
+  mergeHourlyDays,
+  type HourlyDayEntry,
+} from '../lib/mergeDaily'
 
 interface HourlyResponse {
   ok: boolean
   timezone?: string
   today?: string
   days?: HourlyDay[]
+  error?: string
+}
+
+interface PluginHourlyResponse {
+  ok: boolean
+  days?: HourlyDayEntry[]
   error?: string
 }
 
@@ -28,6 +38,21 @@ interface UsageRhythmSectionProps {
   endDate?: string
   /** 日序列（可与概览筛选一致），供 7/30/90 分布 */
   daily: DailyLite[] | null
+  /** 与 KPI/日趋势相同：合并开关打开时的插件 id */
+  foldPluginIds?: string[]
+}
+
+function filterHourlyByRange(
+  days: HourlyDayEntry[],
+  startDate: string,
+  endDate: string,
+): HourlyDayEntry[] {
+  if (!startDate && !endDate) return days
+  return days.filter((d) => {
+    if (startDate && d.date < startDate) return false
+    if (endDate && d.date > endDate) return false
+    return true
+  })
 }
 
 export function UsageRhythmSection({
@@ -35,42 +60,73 @@ export function UsageRhythmSection({
   startDate = '',
   endDate = '',
   daily,
+  foldPluginIds = [],
 }: UsageRhythmSectionProps) {
   const [days, setDays] = useState<HourlyDay[] | null>(null)
   const [today, setToday] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [mergedAddon, setMergedAddon] = useState(false)
+
+  const foldKey = foldPluginIds.join('|')
 
   useEffect(() => {
     let cancelled = false
     setDays(null)
     setError(null)
-    const params: Record<string, string | number> = { days: 90 }
-    if (startDate) params.start = startDate
-    if (endDate) params.end = endDate
+    setMergedAddon(false)
 
-    axios
-      .get<HourlyResponse>('/api/hourly', { params })
-      .then((r) => {
-        if (cancelled) return
-        if (!r.data.ok || !r.data.days) {
-          setError(r.data.error ?? '小时数据加载失败')
-          setDays([])
-          return
+    const params: Record<string, string | number> = { days: 180 }
+    // 主 API 先拉宽窗，再与附加源合并后按筛选裁切（避免插件日被 start/end 截掉）
+
+    const load = async () => {
+      const main = await axios.get<HourlyResponse>('/api/hourly', { params })
+      if (!main.data.ok || !main.data.days) {
+        throw new Error(main.data.error ?? '小时数据加载失败')
+      }
+
+      let merged: HourlyDayEntry[] = main.data.days.map((d) => ({
+        ...d,
+        hours: [...(d.hours || [])],
+      }))
+      let didMerge = false
+
+      if (foldPluginIds.length > 0) {
+        const extras = await Promise.all(
+          foldPluginIds.map((id) =>
+            axios
+              .get<PluginHourlyResponse>(`/api/plugins/${id}/cursor-hourly`)
+              .then((r) => (r.data.ok ? r.data.days || [] : []))
+              .catch(() => [] as HourlyDayEntry[]),
+          ),
+        )
+        for (const extra of extras) {
+          if (!extra.length) continue
+          merged = mergeHourlyDays(merged, extra) || merged
+          didMerge = true
         }
-        setDays(r.data.days)
-        setToday(r.data.today ?? null)
-      })
-      .catch((e) => {
-        if (cancelled) return
-        setError(e instanceof Error ? e.message : String(e))
-        setDays([])
-      })
+      }
+
+      merged = filterHourlyByRange(merged, startDate, endDate)
+      // 热力最多约 90 行
+      if (merged.length > 90) merged = merged.slice(-90)
+
+      if (cancelled) return
+      setDays(merged)
+      setToday(main.data.today ?? null)
+      setMergedAddon(didMerge)
+    }
+
+    load().catch((e) => {
+      if (cancelled) return
+      setError(e instanceof Error ? e.message : String(e))
+      setDays([])
+    })
 
     return () => {
       cancelled = true
     }
-  }, [refreshKey, startDate, endDate])
+  }, [refreshKey, startDate, endDate, foldKey])
 
   // 默认选今天或最近有数据日
   useEffect(() => {
@@ -96,7 +152,11 @@ export function UsageRhythmSection({
         title="使用节奏 · 日内用量"
         storageKey="overview-collapse-hourly"
         defaultOpen
-        hint={days ? `${days.length} 天` : '加载中'}
+        hint={
+          days
+            ? `${days.length} 天${mergedAddon ? ' · 含附加' : ''}`
+            : '加载中'
+        }
       >
         {error ? (
           <div className="rounded-xl border border-danger-border bg-danger-soft p-4 text-sm text-danger">
@@ -112,6 +172,11 @@ export function UsageRhythmSection({
             />
             <HourlyDayChart day={selectedDay} loading={days == null} />
           </div>
+        )}
+        {mergedAddon && (
+          <p className="text-[11px] text-accent">
+            热力已合并附加代理用量（随「合并附加用量」开关；关闭后仅主 Cursor）。
+          </p>
         )}
       </CollapsibleSection>
 

@@ -92,6 +92,94 @@ export async function summarizeUsageCsv(usageCsvPath, sinceIso = null) {
   };
 }
 
+function tokensFromParts(tokens) {
+  if (!tokens || typeof tokens !== 'object') return 0;
+  return (
+    (Number(tokens.cacheWrite) || 0) +
+    (Number(tokens.noCache) || 0) +
+    (Number(tokens.cacheRead) || 0) +
+    (Number(tokens.output) || 0)
+  );
+}
+
+function tokensFromByModel(byModel) {
+  if (!Array.isArray(byModel)) return 0;
+  let sum = 0;
+  for (const m of byModel) sum += tokensFromParts(m?.tokens);
+  return sum;
+}
+
+/**
+ * 从 estimate.json 按事件时间统计增量（含估算 USD）。
+ * @param {string} estimateJsonPath
+ * @param {string | null} sinceIso
+ */
+export function summarizeEstimateDelta(estimateJsonPath, sinceIso = null) {
+  if (!fs.existsSync(estimateJsonPath)) {
+    return {
+      exists: false,
+      totalRows: 0,
+      totalTokens: 0,
+      totalUsd: 0,
+      addedRows: 0,
+      addedTokens: 0,
+      addedUsd: 0,
+    };
+  }
+
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(estimateJsonPath, 'utf8'));
+  } catch {
+    return {
+      exists: false,
+      totalRows: 0,
+      totalTokens: 0,
+      totalUsd: 0,
+      addedRows: 0,
+      addedTokens: 0,
+      addedUsd: 0,
+    };
+  }
+
+  const sinceMs =
+    sinceIso != null && sinceIso !== ''
+      ? new Date(sinceIso).getTime()
+      : null;
+  const sinceOk = sinceMs != null && Number.isFinite(sinceMs);
+
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  let addedRows = 0;
+  let addedTokens = 0;
+  let addedUsd = 0;
+
+  if (sinceOk) {
+    for (const row of rows) {
+      const raw = row?.date;
+      if (!raw) continue;
+      const t = new Date(String(raw).trim()).getTime();
+      if (!Number.isFinite(t) || t <= sinceMs) continue;
+      addedRows += 1;
+      addedTokens += tokensFromParts(row.tokens);
+      addedUsd += Number(row.estimatedUsd) || 0;
+    }
+  }
+
+  const totalUsd = Number(data.totals?.totalEstimatedUsd) || 0;
+  const totalRows = Number(data.totals?.rows) || rows.length;
+  const totalTokens = tokensFromByModel(data.byModel);
+
+  return {
+    exists: true,
+    totalRows,
+    totalTokens,
+    totalUsd,
+    addedRows: sinceOk ? addedRows : 0,
+    addedTokens: sinceOk ? addedTokens : 0,
+    addedUsd: sinceOk ? addedUsd : 0,
+  };
+}
+
 const AUTH_JSON = (repoRoot) => path.join(repoRoot, 'data', 'auth.json');
 const SYNC_STATUS_PATH = (repoRoot) =>
   path.join(repoRoot, 'data', 'dashboard-sync.json');
@@ -268,7 +356,10 @@ async function runNpmScript(script, repoRoot) {
   }
 }
 
-export async function syncFromCursor(repoRoot, { reloadRates, usageCsvPath }) {
+export async function syncFromCursor(
+  repoRoot,
+  { reloadRates, usageCsvPath, estimateJsonPath },
+) {
   ensureProxyEnv();
   const t0 = Date.now();
   const steps = [];
@@ -333,12 +424,53 @@ export async function syncFromCursor(repoRoot, { reloadRates, usageCsvPath }) {
         : null,
     addedRows: 0,
     addedTokens: 0,
+    addedUsd: 0,
     totalTokens: 0,
     totalRows: 0,
+    totalUsd: 0,
     firstSync: sinceIso == null,
+    cursor: {
+      addedRows: 0,
+      addedTokens: 0,
+      addedUsd: 0,
+    },
+    addons: {
+      addedRows: 0,
+      addedTokens: 0,
+      addedUsd: 0,
+    },
   };
 
-  if (usageCsvPath) {
+  // 优先用 estimate.json（含 USD）；CSV 作兜底
+  if (estimateJsonPath) {
+    try {
+      const est = summarizeEstimateDelta(estimateJsonPath, sinceIso);
+      if (est.exists) {
+        delta = {
+          ...delta,
+          addedRows: est.addedRows,
+          addedTokens: est.addedTokens,
+          addedUsd: est.addedUsd,
+          totalTokens: est.totalTokens,
+          totalRows: est.totalRows,
+          totalUsd: est.totalUsd,
+          cursor: {
+            addedRows: est.addedRows,
+            addedTokens: est.addedTokens,
+            addedUsd: est.addedUsd,
+          },
+        };
+      }
+    } catch (e) {
+      console.warn(`[sync] estimate 增量统计失败: ${e?.message}`);
+    }
+  }
+
+  if (
+    usageCsvPath &&
+    delta.totalRows === 0 &&
+    delta.totalTokens === 0
+  ) {
     try {
       const summary = await summarizeUsageCsv(usageCsvPath, sinceIso);
       delta = {
@@ -347,6 +479,11 @@ export async function syncFromCursor(repoRoot, { reloadRates, usageCsvPath }) {
         addedTokens: sinceIso == null ? 0 : summary.addedTokens,
         totalTokens: summary.totalTokens,
         totalRows: summary.totalRows,
+        cursor: {
+          addedRows: sinceIso == null ? 0 : summary.addedRows,
+          addedTokens: sinceIso == null ? 0 : summary.addedTokens,
+          addedUsd: 0,
+        },
       };
     } catch (e) {
       console.warn(`[sync] 用量增量统计失败: ${e?.message}`);
@@ -363,6 +500,7 @@ export async function syncFromCursor(repoRoot, { reloadRates, usageCsvPath }) {
     totalsAtSync: {
       rows: delta.totalRows,
       totalTokens: delta.totalTokens,
+      totalUsd: delta.totalUsd,
     },
   });
 

@@ -31,9 +31,16 @@ interface SyncDelta {
   elapsedMs?: number | null
   addedRows?: number
   addedTokens?: number
+  addedUsd?: number
   totalTokens?: number
   totalRows?: number
+  totalUsd?: number
   firstSync?: boolean
+  addons?: {
+    addedRows?: number
+    addedTokens?: number
+    addedUsd?: number
+  }
 }
 
 interface SyncResponse {
@@ -97,9 +104,13 @@ function deltaToPulse(delta: SyncDelta | undefined, syncMs?: number): SyncPulse 
     id: Date.now(),
     addedRows: delta?.addedRows ?? 0,
     addedTokens: delta?.addedTokens ?? 0,
+    addedUsd: delta?.addedUsd ?? 0,
     totalTokens: delta?.totalTokens ?? 0,
+    totalUsd: delta?.totalUsd ?? 0,
     elapsedMs: delta?.elapsedMs ?? null,
     firstSync: Boolean(delta?.firstSync || !delta?.sinceIso),
+    addonUsd: delta?.addons?.addedUsd ?? 0,
+    addonTokens: delta?.addons?.addedTokens ?? 0,
     syncMs,
   }
 }

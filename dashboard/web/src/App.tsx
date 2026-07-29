@@ -476,6 +476,7 @@ function AppShell() {
                 startDate={startDate}
                 endDate={endDate}
                 daily={displayDaily}
+                foldPluginIds={mergeSourceIds}
               />
             )}
 

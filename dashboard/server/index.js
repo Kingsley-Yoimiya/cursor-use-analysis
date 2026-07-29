@@ -14,6 +14,7 @@ import {
   registerPluginRoutes,
   pluginHealthPayload,
   runEnabledPluginSyncSteps,
+  snapshotMergeablePluginTotals,
 } from './plugin-host.js';
 import {
   classifyPool,
@@ -1038,14 +1039,20 @@ app.post('/api/reload', (_req, res) => {
 
 app.post('/api/sync', async (_req, res) => {
   console.log('[api/sync] 开始从 Cursor 拉取…');
+  const beforeAddons = snapshotMergeablePluginTotals(REPO_ROOT, loadedPlugins);
   const result = await syncFromCursor(REPO_ROOT, {
     reloadRates: reloadRatesConfig,
     usageCsvPath: USAGE_CSV,
+    estimateJsonPath: ESTIMATE_JSON,
   });
   if (result.ok) {
     const pluginSteps = await runEnabledPluginSyncSteps(REPO_ROOT, loadedPlugins);
     result.pluginSteps = pluginSteps;
-    console.log(`[api/sync] 200 ok ${result.ms}ms`);
+    const afterAddons = snapshotMergeablePluginTotals(REPO_ROOT, loadedPlugins);
+    foldAddonDeltaIntoResult(result, beforeAddons, afterAddons);
+    console.log(
+      `[api/sync] 200 ok ${result.ms}ms deltaUsd=${result.delta?.addedUsd?.toFixed?.(2)} tokens=${result.delta?.addedTokens}`,
+    );
     return res.json(result);
   }
   console.error(`[api/sync] 失败 ${result.ms}ms: ${result.error}`);
@@ -1055,12 +1062,16 @@ app.post('/api/sync', async (_req, res) => {
 /** @deprecated 兼容旧前端；等价于 POST /api/sync */
 app.post('/api/refresh', async (_req, res) => {
   console.log('[api/refresh] 开始拉取最新数据...');
+  const beforeAddons = snapshotMergeablePluginTotals(REPO_ROOT, loadedPlugins);
   const result = await syncFromCursor(REPO_ROOT, {
     reloadRates: reloadRatesConfig,
     usageCsvPath: USAGE_CSV,
+    estimateJsonPath: ESTIMATE_JSON,
   });
   if (result.ok) {
     const pluginSteps = await runEnabledPluginSyncSteps(REPO_ROOT, loadedPlugins);
+    const afterAddons = snapshotMergeablePluginTotals(REPO_ROOT, loadedPlugins);
+    foldAddonDeltaIntoResult(result, beforeAddons, afterAddons);
     console.log(`[api/refresh] 200 ok 刷新成功 ${result.ms}ms`);
     return res.json({
       ok: true,
@@ -1078,6 +1089,45 @@ app.post('/api/refresh', async (_req, res) => {
     hint: result.hint,
   });
 });
+
+/**
+ * 把附加源（插件）同步前后差额叠进 delta；非首次同步才计入「新增」。
+ * @param {{ delta?: object }} result
+ * @param {{ rows: number, tokens: number, usd: number, byId: object }} before
+ * @param {{ rows: number, tokens: number, usd: number, byId: object }} after
+ */
+function foldAddonDeltaIntoResult(result, before, after) {
+  if (!result?.delta) return;
+  const rawUsd = after.usd - before.usd;
+  const rawTokens = after.tokens - before.tokens;
+  const rawRows = after.rows - before.rows;
+  const addedUsd = Math.max(0, rawUsd);
+  const addedTokens = Math.max(0, rawTokens);
+  const addedRows = Math.max(0, rawRows);
+
+  result.delta.addons = {
+    addedRows,
+    addedTokens,
+    addedUsd,
+    rawUsd,
+    rawTokens,
+    rawRows,
+    byId: after.byId,
+  };
+
+  result.delta.totalUsd = (Number(result.delta.totalUsd) || 0) + after.usd;
+  result.delta.totalTokens =
+    (Number(result.delta.totalTokens) || 0) + after.tokens;
+  result.delta.totalRows = (Number(result.delta.totalRows) || 0) + after.rows;
+
+  if (!result.delta.firstSync) {
+    result.delta.addedUsd = (Number(result.delta.addedUsd) || 0) + addedUsd;
+    result.delta.addedTokens =
+      (Number(result.delta.addedTokens) || 0) + addedTokens;
+    result.delta.addedRows =
+      (Number(result.delta.addedRows) || 0) + addedRows;
+  }
+}
 
 const bootPlugins = await loadPlugins(REPO_ROOT);
 loadedPlugins = bootPlugins.plugins;

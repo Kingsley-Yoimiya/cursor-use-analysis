@@ -5,6 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
+import { aggregateAddonHourlyFromCsv } from './addon-hourly.js';
 
 const API_VERSION = 1;
 
@@ -230,6 +231,98 @@ export async function registerPluginRoutes(app, repoRoot, plugins) {
     return res.status(result.status).json(result.body);
   });
 
+  app.get('/api/plugins/:id/cursor-hourly', async (req, res) => {
+    const plugin = byId.get(req.params.id);
+    if (!plugin) {
+      return res.status(404).json({
+        ok: false,
+        error: `插件未启用或不存在: ${req.params.id}`,
+      });
+    }
+
+    const hourlyRel =
+      plugin.manifest.paths?.cursorHourlyRel ||
+      `reports/${plugin.id}-cursor-hourly.json`;
+    const hourlyAbs = path.isAbsolute(hourlyRel)
+      ? hourlyRel
+      : path.join(repoRoot, hourlyRel);
+
+    // 优先读预聚合 JSON；没有则从 exports/{id}-usage.csv 现场聚
+    if (fs.existsSync(hourlyAbs)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(hourlyAbs, 'utf8'));
+        const days = Array.isArray(data) ? data : data.days || [];
+        return res.json({
+          ok: true,
+          id: plugin.id,
+          path: hourlyAbs,
+          timezone: data.timezone || 'local-wall-clock',
+          days,
+          source: 'json',
+        });
+      } catch (e) {
+        return res.status(500).json({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    const csvRel =
+      plugin.manifest.paths?.usageCsvRel || `exports/${plugin.id}-usage.csv`;
+    const csvAbs = path.isAbsolute(csvRel)
+      ? csvRel
+      : path.join(repoRoot, csvRel);
+
+    try {
+      const t0 = Date.now();
+      const agg = await aggregateAddonHourlyFromCsv(csvAbs);
+      if (agg.error === 'csv_missing') {
+        return res.status(404).json({
+          ok: false,
+          error: `尚无小时数据（缺少 ${hourlyRel} 与 ${csvRel}）`,
+          hint: '请先同步附加源导出 CSV',
+        });
+      }
+      try {
+        fs.mkdirSync(path.dirname(hourlyAbs), { recursive: true });
+        fs.writeFileSync(
+          hourlyAbs,
+          `${JSON.stringify(
+            {
+              generatedAt: agg.generatedAt,
+              timezone: agg.timezone,
+              sourcePlugin: plugin.id,
+              days: agg.days,
+            },
+            null,
+            2,
+          )}\n`,
+          'utf8',
+        );
+      } catch {
+        /* ignore cache write */
+      }
+      console.log(
+        `[plugins] cursor-hourly ${plugin.id} 从 CSV 聚合 days=${agg.days.length} ${Date.now() - t0}ms`,
+      );
+      return res.json({
+        ok: true,
+        id: plugin.id,
+        path: csvAbs,
+        timezone: agg.timezone,
+        days: agg.days,
+        source: 'csv',
+        ms: Date.now() - t0,
+      });
+    } catch (e) {
+      return res.status(500).json({
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  });
+
   app.post('/api/plugins/:id/sync', async (req, res) => {
     const plugin = byId.get(req.params.id);
     if (!plugin) {
@@ -312,6 +405,59 @@ export async function runEnabledPluginSyncSteps(repoRoot, plugins) {
     }
   }
   return results;
+}
+
+/**
+ * 读取可合并进 Overview 的插件 cursor-summary 合计（USD / token / 行）。
+ * @param {string} repoRoot
+ * @param {LoadedPlugin[]} plugins
+ */
+export function snapshotMergeablePluginTotals(repoRoot, plugins) {
+  let rows = 0;
+  let tokens = 0;
+  let usd = 0;
+  /** @type {Record<string, { rows: number, tokens: number, usd: number }>} */
+  const byId = {};
+
+  for (const plugin of plugins) {
+    const mergeRaw = plugin.manifest.contributes?.mergeIntoOverview;
+    const mergeable =
+      mergeRaw && (mergeRaw === true || mergeRaw.enabled !== false);
+    if (!mergeable) continue;
+
+    const rel =
+      plugin.manifest.paths?.cursorSummaryRel ||
+      `reports/${plugin.id}-cursor-summary.json`;
+    const abs = path.isAbsolute(rel) ? rel : path.join(repoRoot, rel);
+    if (!fs.existsSync(abs)) {
+      byId[plugin.id] = { rows: 0, tokens: 0, usd: 0 };
+      continue;
+    }
+    try {
+      const data = JSON.parse(fs.readFileSync(abs, 'utf8'));
+      const pRows = Number(data.totals?.rows) || 0;
+      const pUsd = Number(data.totals?.totalEstimatedUsd) || 0;
+      let pTokens = 0;
+      if (Array.isArray(data.byModel)) {
+        for (const m of data.byModel) {
+          const t = m?.tokens || {};
+          pTokens +=
+            (Number(t.cacheWrite) || 0) +
+            (Number(t.noCache) || 0) +
+            (Number(t.cacheRead) || 0) +
+            (Number(t.output) || 0);
+        }
+      }
+      byId[plugin.id] = { rows: pRows, tokens: pTokens, usd: pUsd };
+      rows += pRows;
+      tokens += pTokens;
+      usd += pUsd;
+    } catch {
+      byId[plugin.id] = { rows: 0, tokens: 0, usd: 0 };
+    }
+  }
+
+  return { rows, tokens, usd, byId };
 }
 
 /**
