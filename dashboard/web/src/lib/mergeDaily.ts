@@ -147,60 +147,60 @@ export function mergeSummaryByModel(
 export interface HourlyDayEntry {
   date: string
   hours: number[]
+  /** 每小时估算 USD；旧数据可能缺失 */
+  costHours?: number[]
   totalTokens: number
+  totalCost?: number
   rows: number
 }
 
-/** 将附加源小时桶叠进主 hourly（按 date 合并 hours[24]）。 */
+function normalizeHourlyDay(d: HourlyDayEntry): HourlyDayEntry {
+  const hours = Array.from({ length: 24 }, (_, h) => Number(d.hours?.[h] || 0))
+  const costHours = Array.from({ length: 24 }, (_, h) =>
+    Number(d.costHours?.[h] || 0),
+  )
+  return {
+    date: d.date,
+    hours,
+    costHours,
+    totalTokens: Number(d.totalTokens) || hours.reduce((s, v) => s + v, 0),
+    totalCost:
+      Number(d.totalCost) || costHours.reduce((s, v) => s + v, 0),
+    rows: Number(d.rows) || 0,
+  }
+}
+
+/** 将附加源小时桶叠进主 hourly（按 date 合并 hours / costHours）。 */
 export function mergeHourlyDays(
   base: HourlyDayEntry[] | null | undefined,
   extras: HourlyDayEntry[] | null | undefined,
 ): HourlyDayEntry[] | null {
   if (!base && (!extras || extras.length === 0)) return null
   if (!extras || extras.length === 0) {
-    return base
-      ? base.map((d) => ({
-          ...d,
-          hours: [...(d.hours || Array.from({ length: 24 }, () => 0))],
-        }))
-      : null
+    return base ? base.map(normalizeHourlyDay) : null
   }
   if (!base || base.length === 0) {
-    return extras.map((d) => ({
-      ...d,
-      hours: [...(d.hours || Array.from({ length: 24 }, () => 0))],
-    }))
+    return extras.map(normalizeHourlyDay)
   }
 
   const map = new Map<string, HourlyDayEntry>()
   for (const d of base) {
-    const hours = Array.from({ length: 24 }, (_, h) => Number(d.hours?.[h] || 0))
-    map.set(d.date, {
-      date: d.date,
-      hours,
-      totalTokens: Number(d.totalTokens) || hours.reduce((s, v) => s + v, 0),
-      rows: Number(d.rows) || 0,
-    })
+    map.set(d.date, normalizeHourlyDay(d))
   }
   for (const e of extras) {
+    const next = normalizeHourlyDay(e)
     const cur = map.get(e.date)
     if (!cur) {
-      const hours = Array.from({ length: 24 }, (_, h) =>
-        Number(e.hours?.[h] || 0),
-      )
-      map.set(e.date, {
-        date: e.date,
-        hours,
-        totalTokens: Number(e.totalTokens) || hours.reduce((s, v) => s + v, 0),
-        rows: Number(e.rows) || 0,
-      })
+      map.set(e.date, next)
       continue
     }
     for (let h = 0; h < 24; h++) {
-      cur.hours[h] += Number(e.hours?.[h] || 0)
+      cur.hours[h] += next.hours[h]
+      cur.costHours![h] += next.costHours![h]
     }
-    cur.totalTokens += Number(e.totalTokens) || 0
-    cur.rows += Number(e.rows) || 0
+    cur.totalTokens += next.totalTokens
+    cur.totalCost = (cur.totalCost || 0) + (next.totalCost || 0)
+    cur.rows += next.rows
   }
   return [...map.values()].sort((a, b) => a.date.localeCompare(b.date))
 }

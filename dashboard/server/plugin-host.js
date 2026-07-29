@@ -247,36 +247,41 @@ export async function registerPluginRoutes(app, repoRoot, plugins) {
       ? hourlyRel
       : path.join(repoRoot, hourlyRel);
 
-    // 优先读预聚合 JSON；没有则从 exports/{id}-usage.csv 现场聚
-    if (fs.existsSync(hourlyAbs)) {
-      try {
-        const data = JSON.parse(fs.readFileSync(hourlyAbs, 'utf8'));
-        const days = Array.isArray(data) ? data : data.days || [];
-        return res.json({
-          ok: true,
-          id: plugin.id,
-          path: hourlyAbs,
-          timezone: data.timezone || 'local-wall-clock',
-          days,
-          source: 'json',
-        });
-      } catch (e) {
-        return res.status(500).json({
-          ok: false,
-          error: e instanceof Error ? e.message : String(e),
-        });
-      }
-    }
-
     const csvRel =
       plugin.manifest.paths?.usageCsvRel || `exports/${plugin.id}-usage.csv`;
     const csvAbs = path.isAbsolute(csvRel)
       ? csvRel
       : path.join(repoRoot, csvRel);
 
+    const hasCostHours = (days) =>
+      Array.isArray(days) &&
+      days.length > 0 &&
+      Array.isArray(days[0]?.costHours) &&
+      days[0].costHours.length === 24;
+
+    // 优先读预聚合 JSON（需含 costHours）；否则从 CSV 现场聚并缓存
+    if (fs.existsSync(hourlyAbs)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(hourlyAbs, 'utf8'));
+        const days = Array.isArray(data) ? data : data.days || [];
+        if (hasCostHours(days)) {
+          return res.json({
+            ok: true,
+            id: plugin.id,
+            path: hourlyAbs,
+            timezone: data.timezone || 'local-wall-clock',
+            days,
+            source: 'json',
+          });
+        }
+      } catch {
+        /* fall through to CSV */
+      }
+    }
+
     try {
       const t0 = Date.now();
-      const agg = await aggregateAddonHourlyFromCsv(csvAbs);
+      const agg = await aggregateAddonHourlyFromCsv(csvAbs, { repoRoot });
       if (agg.error === 'csv_missing') {
         return res.status(404).json({
           ok: false,

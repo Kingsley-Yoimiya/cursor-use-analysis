@@ -163,7 +163,7 @@ export function UsageRhythmSection({
             加载小时数据失败：{error}
           </div>
         ) : (
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid gap-6 xl:grid-cols-2 xl:items-start">
             <HourlyHeatmapChart
               days={days}
               selectedDate={selectedDate}

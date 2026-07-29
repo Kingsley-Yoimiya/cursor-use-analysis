@@ -9,7 +9,9 @@ import { fmtTokens } from '../lib/formatTokens'
 export interface HourlyDay {
   date: string
   hours: number[]
+  costHours?: number[]
   totalTokens: number
+  totalCost?: number
   rows: number
 }
 

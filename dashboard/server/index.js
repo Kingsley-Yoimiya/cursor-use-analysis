@@ -637,7 +637,7 @@ app.get('/api/hourly', async (req, res) => {
       : null;
 
   /**
-   * @type {Map<string, { date: string, hours: number[], totalTokens: number, rows: number }>}
+   * @type {Map<string, { date: string, hours: number[], costHours: number[], totalTokens: number, totalCost: number, rows: number }>}
    */
   const byDay = new Map();
 
@@ -651,29 +651,31 @@ app.get('/api/hourly', async (req, res) => {
           const local = shanghaiDayHour(row[CSV_COL.date]);
           if (!local) return;
 
-          const cacheRead = parseIntField(row[CSV_COL.cacheRead]);
-          const inputCacheWrite = parseIntField(row[CSV_COL.inCacheWrite]);
-          const inputNoCache = parseIntField(row[CSV_COL.inNoCache]);
-          const outputTokens = parseIntField(row[CSV_COL.output]);
-          const totalTokens =
-            parseIntField(row[CSV_COL.total]) ||
-            cacheRead + inputCacheWrite + inputNoCache + outputTokens;
-          const rowTokens =
-            cacheRead + inputCacheWrite + inputNoCache + outputTokens ||
-            totalTokens;
+          const parsed = processUsageRow(row);
+          const rowTokens = parsed
+            ? parsed.rowTokens
+            : parseIntField(row[CSV_COL.cacheRead]) +
+              parseIntField(row[CSV_COL.inCacheWrite]) +
+              parseIntField(row[CSV_COL.inNoCache]) +
+              parseIntField(row[CSV_COL.output]);
+          const estimatedUsd = parsed ? parsed.estimatedUsd : 0;
 
           let agg = byDay.get(local.date);
           if (!agg) {
             agg = {
               date: local.date,
               hours: Array.from({ length: 24 }, () => 0),
+              costHours: Array.from({ length: 24 }, () => 0),
               totalTokens: 0,
+              totalCost: 0,
               rows: 0,
             };
             byDay.set(local.date, agg);
           }
           agg.hours[local.hour] += rowTokens;
+          agg.costHours[local.hour] += estimatedUsd;
           agg.totalTokens += rowTokens;
+          agg.totalCost += estimatedUsd;
           agg.rows += 1;
         })
         .on('end', resolve)
