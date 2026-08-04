@@ -24,5 +24,6 @@ dashboard/logs/
 
 # 本机扩展启用配置（勿提交）
 config/plugins.local.json
+config/profiles.json
 plugins-private/
 

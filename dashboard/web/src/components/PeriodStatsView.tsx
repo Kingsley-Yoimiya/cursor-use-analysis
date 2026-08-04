@@ -555,7 +555,15 @@ function PeriodCard({ period, poolColors }: PeriodCardProps & { poolColors: Reco
 
 // ────────── 主组件 ──────────
 
-export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
+export function PeriodStatsView({
+  refreshKey,
+  profilesQuery,
+  profilesKey,
+}: {
+  refreshKey?: number
+  profilesQuery?: string
+  profilesKey?: string
+}) {
   const { isDark } = useTheme()
   const chartColors = useChartColors()
   const poolColors = useMemo(
@@ -588,7 +596,10 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
     setLoading(true)
     axios
       .get<PeriodStatsResponse>('/api/period-stats', {
-        params: { billingCycleDay },
+        params: {
+          billingCycleDay,
+          ...(profilesQuery ? { profiles: profilesQuery } : {}),
+        },
       })
       .then((r) => {
         if (r.data.ok) {
@@ -611,7 +622,7 @@ export function PeriodStatsView({ refreshKey }: { refreshKey?: number }) {
         setError(e instanceof Error ? e.message : String(e))
       })
       .finally(() => setLoading(false))
-  }, [billingCycleDay, refreshKey])
+  }, [billingCycleDay, refreshKey, profilesKey, profilesQuery])
 
   const activeGroup = useMemo(() => {
     if (!data) return null

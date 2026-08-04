@@ -40,6 +40,8 @@ interface UsageRhythmSectionProps {
   daily: DailyLite[] | null
   /** 与 KPI/日趋势相同：合并开关打开时的插件 id */
   foldPluginIds?: string[]
+  profilesQuery?: string
+  profilesKey?: string
 }
 
 function filterHourlyByRange(
@@ -61,6 +63,8 @@ export function UsageRhythmSection({
   endDate = '',
   daily,
   foldPluginIds = [],
+  profilesQuery,
+  profilesKey,
 }: UsageRhythmSectionProps) {
   const [days, setDays] = useState<HourlyDay[] | null>(null)
   const [today, setToday] = useState<string | null>(null)
@@ -77,6 +81,7 @@ export function UsageRhythmSection({
     setMergedAddon(false)
 
     const params: Record<string, string | number> = { days: 180 }
+    if (profilesQuery) params.profiles = profilesQuery
     // 主 API 先拉宽窗，再与附加源合并后按筛选裁切（避免插件日被 start/end 截掉）
 
     const load = async () => {
@@ -126,7 +131,7 @@ export function UsageRhythmSection({
     return () => {
       cancelled = true
     }
-  }, [refreshKey, startDate, endDate, foldKey])
+  }, [refreshKey, startDate, endDate, foldKey, profilesKey, profilesQuery])
 
   // 默认选今天或最近有数据日
   useEffect(() => {
@@ -163,14 +168,19 @@ export function UsageRhythmSection({
             加载小时数据失败：{error}
           </div>
         ) : (
-          <div className="grid gap-6 xl:grid-cols-2 xl:items-start">
+          <div className="grid gap-4 xl:grid-cols-2 xl:h-[360px] xl:items-stretch">
             <HourlyHeatmapChart
               days={days}
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
               today={today}
+              className="max-h-[360px] xl:max-h-none xl:h-full"
             />
-            <HourlyDayChart day={selectedDay} loading={days == null} />
+            <HourlyDayChart
+              day={selectedDay}
+              loading={days == null}
+              className="max-h-[360px] xl:max-h-none xl:h-full"
+            />
           </div>
         )}
         {mergedAddon && (

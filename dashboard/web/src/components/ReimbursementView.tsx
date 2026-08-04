@@ -427,7 +427,7 @@ export function ReimbursementView({
     Promise.all([
       axios.get<ProfileResponse>('/api/reimbursement-profile'),
       axios.get<PeriodStatsResponse>('/api/period-stats', {
-        params: { billingCycleDay },
+        params: { billingCycleDay, profiles: 'default' },
       }),
     ])
       .then(([profileRes, periodRes]) => {

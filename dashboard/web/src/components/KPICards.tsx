@@ -108,10 +108,14 @@ export function KPICards({
   refreshKey,
   foldPluginIds = [],
   syncPulse = null,
+  profilesQuery,
+  profilesKey,
 }: {
   refreshKey?: number
   foldPluginIds?: string[]
   syncPulse?: SyncPulse | null
+  profilesQuery?: string
+  profilesKey?: string
 }) {
   const [data, setData] = useState<SummaryData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -130,7 +134,9 @@ export function KPICards({
   useEffect(() => {
     setLoading(true)
     const load = async () => {
-      const r = await axios.get<SummaryResponse>('/api/summary')
+      const r = await axios.get<SummaryResponse>('/api/summary', {
+        params: profilesQuery ? { profiles: profilesQuery } : undefined,
+      })
       if (!r.data.ok || !r.data.data) {
         setError(r.data.error ?? '接口返回异常')
         setData(null)
@@ -176,7 +182,7 @@ export function KPICards({
     load()
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false))
-  }, [refreshKey, foldPluginIds.join('|')])
+  }, [refreshKey, foldPluginIds.join('|'), profilesKey, profilesQuery])
 
   if (loading) {
     return (

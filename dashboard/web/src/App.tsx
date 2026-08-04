@@ -20,8 +20,10 @@ import {
   type AddonSourceInfo,
 } from './components/MergeAddonToggle'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
+import { ProfilesProvider, useProfiles } from './context/ProfilesContext'
 import { ThemePalettePicker } from './components/ThemePalettePicker'
 import { DataSyncBar } from './components/DataSyncBar'
+import { ProfileSwitcher } from './components/ProfileSwitcher'
 import { UsageRhythmSection } from './components/UsageRhythmSection'
 import { mergeDailyEntries, type DailyEntry as MergeDailyEntry } from './lib/mergeDaily'
 import type { SyncPulse } from './lib/syncPulse'
@@ -84,6 +86,7 @@ interface PluginCursorDailyResponse {
 
 function AppShell() {
   const { isDark, toggleMode } = useTheme()
+  const { profilesQuery, selectedKey, selectedIds, profiles } = useProfiles()
 
   // ── 标签页 ──
   const [activeTab, setActiveTab] = useState<Tab>('overview')
@@ -91,8 +94,9 @@ function AppShell() {
   const [addonSources, setAddonSources] = useState<AddonSourceInfo[]>([])
   const [mergeEnabled, setMergeEnabled] = useState<boolean>(() => readMergeEnabled())
 
-  // ── 每日数据（daily 始终为纯 Cursor，供报销使用）──
+  // ── 每日数据（勾选身份汇总；报销单独拉 default）──
   const [daily, setDaily] = useState<DailyEntry[] | null>(null)
+  const [reimburseDaily, setReimburseDaily] = useState<DailyEntry[] | null>(null)
   const [pluginDailyExtra, setPluginDailyExtra] = useState<DailyEntry[] | null>(null)
   const [dailyError, setDailyError] = useState<string | null>(null)
   const [startDate, setStartDate] = useState<string>('')
@@ -111,6 +115,17 @@ function AppShell() {
     writeMergeEnabled(on)
     setMergeEnabled(on)
   }
+
+  const selectedSummary = useMemo(() => {
+    const selected = profiles.filter((p) => selectedIds.includes(p.id))
+    if (selected.length <= 1) {
+      const one = selected[0]
+      return one?.email || one?.displayName || null
+    }
+    return selected
+      .map((p) => p.email || p.label || p.id)
+      .join(' + ')
+  }, [profiles, selectedIds])
 
   useEffect(() => {
     axios
@@ -148,13 +163,28 @@ function AppShell() {
   }, [refreshKey])
 
   useEffect(() => {
+    if (!profilesQuery) return
+    setDaily(null)
     axios
-      .get<DailyResponse>('/api/daily')
+      .get<DailyResponse>('/api/daily', {
+        params: { profiles: profilesQuery },
+      })
       .then((r) => {
         if (r.data.ok && r.data.daily) setDaily(r.data.daily)
         else setDailyError(r.data.error ?? '接口返回异常')
       })
       .catch((e) => setDailyError(e instanceof Error ? e.message : String(e)))
+  }, [refreshKey, profilesQuery])
+
+  useEffect(() => {
+    axios
+      .get<DailyResponse>('/api/daily', {
+        params: { profiles: 'default' },
+      })
+      .then((r) => {
+        if (r.data.ok && r.data.daily) setReimburseDaily(r.data.daily)
+      })
+      .catch(() => setReimburseDaily(null))
   }, [refreshKey])
 
   useEffect(() => {
@@ -317,6 +347,7 @@ function AppShell() {
               onChange={setMerge}
               compact
             />
+            <ProfileSwitcher onSynced={bumpRefresh} />
             <DataSyncBar
               onReload={bumpRefresh}
               onSyncSuccess={setSyncPulse}
@@ -392,11 +423,18 @@ function AppShell() {
                 已合并本地附加用量到概览（按公开单价估算）；报销 Tab 仍为主数据源。
               </p>
             )}
+            {selectedIds.length > 1 && selectedSummary && (
+              <p className="text-[11px] text-fg-muted">
+                多身份汇总：{selectedSummary}
+              </p>
+            )}
             <section>
               <KPICards
                 refreshKey={refreshKey}
                 foldPluginIds={mergeSourceIds}
                 syncPulse={syncPulse}
+                profilesQuery={profilesQuery}
+                profilesKey={selectedKey}
               />
             </section>
 
@@ -477,6 +515,8 @@ function AppShell() {
                 endDate={endDate}
                 daily={displayDaily}
                 foldPluginIds={mergeSourceIds}
+                profilesQuery={profilesQuery}
+                profilesKey={selectedKey}
               />
             )}
 
@@ -506,7 +546,7 @@ function AppShell() {
             <h2 className="section-title">
               分月报销记录（按账单刷新日）
             </h2>
-            <ReimbursementView refreshKey={refreshKey} daily={daily} />
+            <ReimbursementView refreshKey={refreshKey} daily={reimburseDaily} />
           </div>
         )}
 
@@ -516,7 +556,16 @@ function AppShell() {
             <h2 className="section-title">
               月度 / 账单周期统计
             </h2>
-            <PeriodStatsView refreshKey={refreshKey} />
+            {selectedIds.length > 1 && selectedSummary && (
+              <p className="text-[11px] text-fg-muted">
+                多身份汇总：{selectedSummary}
+              </p>
+            )}
+            <PeriodStatsView
+              refreshKey={refreshKey}
+              profilesQuery={profilesQuery}
+              profilesKey={selectedKey}
+            />
           </div>
         )}
 
@@ -541,6 +590,8 @@ function AppShell() {
             <ModelLeaderboard
               refreshKey={refreshKey}
               foldPluginIds={mergeSourceIds}
+              profilesQuery={profilesQuery}
+              profilesKey={selectedKey}
             />
           </div>
         )}
@@ -573,7 +624,9 @@ function AppShell() {
 function App() {
   return (
     <ThemeProvider>
-      <AppShell />
+      <ProfilesProvider>
+        <AppShell />
+      </ProfilesProvider>
     </ThemeProvider>
   )
 }

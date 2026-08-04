@@ -26,6 +26,17 @@ dashboard/
 └── start-dev.sh      # 一键启动脚本
 ```
 
+## 多账号身份汇总
+
+右上角 **身份** 面板支持登记多个 Cursor 账号并勾选汇总：
+
+1. 点击 **+ 添加身份**（如 `alt`）
+2. 复制并执行 login 命令（独立会话目录）
+3. 在面板对该身份点 **同步**
+4. 勾选要计入概览的身份
+
+数据路径见 `config/profiles.json`（可参考 `config/profiles.example.json`）。报销 Tab 固定使用 `default` 主账号，避免多人费用混开。
+
 ## 如何使用
 
 确保你已经在根目录执行了导出数据脚本，并生成了 `exports/usage.csv` 和 `reports/estimate.json`（或根据年份对应的文件，默认脚本会读取这些路径）。

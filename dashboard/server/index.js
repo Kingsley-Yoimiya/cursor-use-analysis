@@ -20,6 +20,16 @@ import {
   classifyPool,
   resolveRateForModel as resolveRateForModelShared,
 } from '../../scripts/lib/resolve-model-rate.mjs';
+import {
+  ensureProfilesConfig,
+  enrichProfilesForApi,
+  createProfile,
+  setActiveForSync,
+  patchProfile,
+  getProfileById,
+  resolveRequestedProfiles,
+  listResolvedProfiles,
+} from './profiles.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -396,6 +406,238 @@ function processUsageRow(row) {
   };
 }
 
+function emptyPools() {
+  return { Auto: 0, FirstParty: 0, API: 0 };
+}
+
+function mergeDailyMaps(targetMap, sourceList) {
+  for (const d of sourceList) {
+    let cur = targetMap.get(d.date);
+    if (!cur) {
+      targetMap.set(d.date, {
+        ...d,
+        costByPool: { ...emptyPools(), ...d.costByPool },
+        tokensByPool: { ...emptyPools(), ...d.tokensByPool },
+        costByModel: { ...(d.costByModel || {}) },
+        tokensByModel: { ...(d.tokensByModel || {}) },
+      });
+      continue;
+    }
+    cur.totalTokens += d.totalTokens || 0;
+    cur.cacheRead += d.cacheRead || 0;
+    cur.inputCacheWrite += d.inputCacheWrite || 0;
+    cur.inputNoCache += d.inputNoCache || 0;
+    cur.outputTokens += d.outputTokens || 0;
+    cur.cost += d.cost || 0;
+    cur.rows += d.rows || 0;
+    for (const k of Object.keys(emptyPools())) {
+      cur.costByPool[k] = (cur.costByPool[k] || 0) + (d.costByPool?.[k] || 0);
+      cur.tokensByPool[k] =
+        (cur.tokensByPool[k] || 0) + (d.tokensByPool?.[k] || 0);
+    }
+    for (const [mk, mv] of Object.entries(d.costByModel || {})) {
+      cur.costByModel[mk] = (cur.costByModel[mk] || 0) + mv;
+    }
+    for (const [mk, mv] of Object.entries(d.tokensByModel || {})) {
+      cur.tokensByModel[mk] = (cur.tokensByModel[mk] || 0) + mv;
+    }
+  }
+}
+
+async function aggregateDailyFromCsv(csvPath) {
+  if (!fs.existsSync(csvPath)) {
+    return { ok: false, error: '找不到 usage CSV', path: csvPath, daily: [] };
+  }
+  const byDay = new Map();
+  await new Promise((resolve, reject) => {
+    const stream = createReadStream(csvPath, { encoding: 'utf8' });
+    stream.on('error', reject);
+    stream
+      .pipe(csv())
+      .on('data', (row) => {
+        const parsed = processUsageRow(row);
+        if (!parsed) return;
+        const {
+          day,
+          cacheRead,
+          inputCacheWrite,
+          inputNoCache,
+          outputTokens,
+          totalTokens,
+          estimatedUsd,
+          pool,
+          rowTokens,
+          modelKey,
+        } = parsed;
+        let agg = byDay.get(day);
+        if (!agg) {
+          agg = {
+            date: day,
+            totalTokens: 0,
+            cacheRead: 0,
+            inputCacheWrite: 0,
+            inputNoCache: 0,
+            outputTokens: 0,
+            cost: 0,
+            costByPool: emptyPools(),
+            tokensByPool: emptyPools(),
+            costByModel: {},
+            tokensByModel: {},
+            rows: 0,
+          };
+          byDay.set(day, agg);
+        }
+        agg.totalTokens += totalTokens;
+        agg.cacheRead += cacheRead;
+        agg.inputCacheWrite += inputCacheWrite;
+        agg.inputNoCache += inputNoCache;
+        agg.outputTokens += outputTokens;
+        agg.cost += estimatedUsd;
+        agg.costByPool[pool] += estimatedUsd;
+        agg.tokensByPool[pool] += rowTokens;
+        agg.costByModel[modelKey] =
+          (agg.costByModel[modelKey] ?? 0) + estimatedUsd;
+        agg.tokensByModel[modelKey] =
+          (agg.tokensByModel[modelKey] ?? 0) + rowTokens;
+        agg.rows += 1;
+      })
+      .on('end', resolve)
+      .on('error', reject);
+  });
+  const daily = [...byDay.values()].sort((a, b) =>
+    a.date.localeCompare(b.date),
+  );
+  return { ok: true, path: csvPath, daily };
+}
+
+async function aggregateHourlyFromCsv(csvPath) {
+  if (!fs.existsSync(csvPath)) {
+    return { ok: false, error: '找不到 usage CSV', path: csvPath, days: [] };
+  }
+  const byDay = new Map();
+  await new Promise((resolve, reject) => {
+    const stream = createReadStream(csvPath, { encoding: 'utf8' });
+    stream.on('error', reject);
+    stream
+      .pipe(csv())
+      .on('data', (row) => {
+        const local = shanghaiDayHour(row[CSV_COL.date]);
+        if (!local) return;
+        const parsed = processUsageRow(row);
+        const rowTokens = parsed
+          ? parsed.rowTokens
+          : parseIntField(row[CSV_COL.cacheRead]) +
+            parseIntField(row[CSV_COL.inCacheWrite]) +
+            parseIntField(row[CSV_COL.inNoCache]) +
+            parseIntField(row[CSV_COL.output]);
+        const estimatedUsd = parsed ? parsed.estimatedUsd : 0;
+        let agg = byDay.get(local.date);
+        if (!agg) {
+          agg = {
+            date: local.date,
+            hours: Array.from({ length: 24 }, () => 0),
+            costHours: Array.from({ length: 24 }, () => 0),
+            totalTokens: 0,
+            totalCost: 0,
+            rows: 0,
+          };
+          byDay.set(local.date, agg);
+        }
+        agg.hours[local.hour] += rowTokens;
+        agg.costHours[local.hour] += estimatedUsd;
+        agg.totalTokens += rowTokens;
+        agg.totalCost += estimatedUsd;
+        agg.rows += 1;
+      })
+      .on('end', resolve)
+      .on('error', reject);
+  });
+  const days = [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
+  return { ok: true, path: csvPath, days };
+}
+
+function mergeHourlyLists(lists) {
+  const map = new Map();
+  for (const list of lists) {
+    for (const d of list) {
+      let cur = map.get(d.date);
+      if (!cur) {
+        map.set(d.date, {
+          date: d.date,
+          hours: [...d.hours],
+          costHours: [...(d.costHours || Array(24).fill(0))],
+          totalTokens: d.totalTokens || 0,
+          totalCost: d.totalCost || 0,
+          rows: d.rows || 0,
+        });
+        continue;
+      }
+      for (let h = 0; h < 24; h++) {
+        cur.hours[h] += d.hours[h] || 0;
+        cur.costHours[h] += (d.costHours?.[h] || 0);
+      }
+      cur.totalTokens += d.totalTokens || 0;
+      cur.totalCost += d.totalCost || 0;
+      cur.rows += d.rows || 0;
+    }
+  }
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function mergeEstimateDocs(docs) {
+  const byModelMap = new Map();
+  let rows = 0;
+  let unknownModelRows = 0;
+  let totalEstimatedUsd = 0;
+  let generatedAt = null;
+  for (const data of docs) {
+    if (!data) continue;
+    if (data.generatedAt && (!generatedAt || data.generatedAt > generatedAt)) {
+      generatedAt = data.generatedAt;
+    }
+    rows += Number(data.totals?.rows) || 0;
+    unknownModelRows += Number(data.totals?.unknownModelRows) || 0;
+    totalEstimatedUsd += Number(data.totals?.totalEstimatedUsd) || 0;
+    for (const m of data.byModel || []) {
+      const key = m.model;
+      let cur = byModelMap.get(key);
+      if (!cur) {
+        byModelMap.set(key, {
+          model: key,
+          requests: Number(m.requests) || 0,
+          estimatedUsd: Number(m.estimatedUsd) || 0,
+          tokens: {
+            cacheWrite: Number(m.tokens?.cacheWrite) || 0,
+            noCache: Number(m.tokens?.noCache) || 0,
+            cacheRead: Number(m.tokens?.cacheRead) || 0,
+            output: Number(m.tokens?.output) || 0,
+          },
+        });
+        continue;
+      }
+      cur.requests += Number(m.requests) || 0;
+      cur.estimatedUsd += Number(m.estimatedUsd) || 0;
+      cur.tokens.cacheWrite += Number(m.tokens?.cacheWrite) || 0;
+      cur.tokens.noCache += Number(m.tokens?.noCache) || 0;
+      cur.tokens.cacheRead += Number(m.tokens?.cacheRead) || 0;
+      cur.tokens.output += Number(m.tokens?.output) || 0;
+    }
+  }
+  const byModel = [...byModelMap.values()].sort(
+    (a, b) => b.estimatedUsd - a.estimatedUsd,
+  );
+  return {
+    generatedAt: generatedAt || new Date().toISOString(),
+    totals: { rows, unknownModelRows, totalEstimatedUsd },
+    byModel,
+    mergedProfiles: docs.length,
+  };
+}
+
+function profilesQueryParam(req) {
+  return typeof req.query.profiles === 'string' ? req.query.profiles : '';
+}
+
 // ──────────── 工具函数 ────────────
 
 function parseIntField(v, fallback = 0) {
@@ -478,208 +720,202 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get('/api/summary', async (_req, res) => {
+app.get('/api/summary', async (req, res) => {
   const t0 = Date.now();
   try {
-    if (!fs.existsSync(ESTIMATE_JSON)) {
+    const resolved = resolveRequestedProfiles(
+      REPO_ROOT,
+      profilesQueryParam(req),
+    );
+    if (!resolved.ok) {
+      return res.status(400).json({ ok: false, error: resolved.error });
+    }
+
+    const docs = [];
+    const used = [];
+    const missing = [];
+    for (const p of resolved.profiles) {
+      const estPath = p.paths.estimateJson;
+      if (!fs.existsSync(estPath)) {
+        missing.push({ id: p.id, path: estPath });
+        continue;
+      }
+      const raw = await fs.promises.readFile(estPath, 'utf8');
+      docs.push(JSON.parse(raw));
+      used.push(p.id);
+    }
+
+    if (docs.length === 0) {
       return res.status(404).json({
         ok: false,
-        error: '找不到 estimate.json',
-        path: ESTIMATE_JSON,
+        error: '找不到 estimate.json（所选身份均无数据）',
+        missing,
       });
     }
-    const raw = await fs.promises.readFile(ESTIMATE_JSON, 'utf8');
-    const data = JSON.parse(raw);
+
+    const data =
+      docs.length === 1 ? docs[0] : mergeEstimateDocs(docs);
     const ms = Date.now() - t0;
     console.log(
-      `[api/summary] 200 ok rows=${data?.totals?.rows ?? '?'} ${ms}ms`,
+      `[api/summary] 200 ok profiles=${used.join('+')} rows=${data?.totals?.rows ?? '?'} ${ms}ms`,
     );
-    return res.json({ ok: true, data, ms });
+    return res.json({
+      ok: true,
+      data,
+      profiles: used,
+      missing,
+      ms,
+    });
   } catch (e) {
     const ms = Date.now() - t0;
     console.error(`[api/summary] 500 ${e?.message} ${ms}ms`);
     return res.status(500).json({
       ok: false,
       error: e instanceof Error ? e.message : String(e),
-      path: ESTIMATE_JSON,
       ms,
     });
   }
 });
 
-app.get('/api/daily', async (_req, res) => {
+app.get('/api/daily', async (req, res) => {
   const t0 = Date.now();
-  if (!fs.existsSync(USAGE_CSV)) {
-    return res.status(404).json({
-      ok: false,
-      error: '找不到 usage CSV',
-      path: USAGE_CSV,
-    });
-  }
-
-  /**
-   * @type {Map<string, {
-   *   date: string
-   *   totalTokens: number
-   *   cacheRead: number
-   *   inputCacheWrite: number
-   *   inputNoCache: number
-   *   outputTokens: number
-   *   cost: number
-   *   costByPool: { Auto: number; FirstParty: number; API: number }
-   *   tokensByPool: { Auto: number; FirstParty: number; API: number }
-   *   costByModel: Record<string, number>
-   *   tokensByModel: Record<string, number>
-   *   rows: number
-   * }>}
-   */
-  const byDay = new Map();
-
   try {
-    await new Promise((resolve, reject) => {
-      const stream = createReadStream(USAGE_CSV, { encoding: 'utf8' });
-      stream.on('error', reject);
-      stream
-        .pipe(csv())
-        .on('data', (row) => {
-          const parsed = processUsageRow(row);
-          if (!parsed) return;
+    const resolved = resolveRequestedProfiles(
+      REPO_ROOT,
+      profilesQueryParam(req),
+    );
+    if (!resolved.ok) {
+      return res.status(400).json({ ok: false, error: resolved.error });
+    }
 
-          const {
-            day,
-            cacheRead,
-            inputCacheWrite,
-            inputNoCache,
-            outputTokens,
-            totalTokens,
-            estimatedUsd,
-            pool,
-            rowTokens,
-            modelKey,
-          } = parsed;
+    const byDay = new Map();
+    const used = [];
+    const missing = [];
+    for (const p of resolved.profiles) {
+      const result = await aggregateDailyFromCsv(p.paths.usageCsv);
+      if (!result.ok) {
+        missing.push({ id: p.id, path: result.path, error: result.error });
+        continue;
+      }
+      mergeDailyMaps(byDay, result.daily);
+      used.push(p.id);
+    }
 
-          let agg = byDay.get(day);
-          if (!agg) {
-            agg = {
-              date: day,
-              totalTokens: 0,
-              cacheRead: 0,
-              inputCacheWrite: 0,
-              inputNoCache: 0,
-              outputTokens: 0,
-              cost: 0,
-              costByPool: { Auto: 0, FirstParty: 0, API: 0 },
-              tokensByPool: { Auto: 0, FirstParty: 0, API: 0 },
-              costByModel: {},
-              tokensByModel: {},
-              rows: 0,
-            };
-            byDay.set(day, agg);
-          }
-          agg.totalTokens += totalTokens;
-          agg.cacheRead += cacheRead;
-          agg.inputCacheWrite += inputCacheWrite;
-          agg.inputNoCache += inputNoCache;
-          agg.outputTokens += outputTokens;
-          agg.cost += estimatedUsd;
-          agg.costByPool[pool] += estimatedUsd;
-          agg.tokensByPool[pool] += rowTokens;
-          agg.costByModel[modelKey] = (agg.costByModel[modelKey] ?? 0) + estimatedUsd;
-          agg.tokensByModel[modelKey] =
-            (agg.tokensByModel[modelKey] ?? 0) + rowTokens;
-          agg.rows += 1;
-        })
-        .on('end', resolve)
-        .on('error', reject);
-    });
+    if (used.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        error: '找不到 usage CSV（所选身份均无数据）',
+        missing,
+      });
+    }
+
+    const daily = [...byDay.values()].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
+    const ms = Date.now() - t0;
+    console.log(
+      `[api/daily] 200 ok profiles=${used.join('+')} days=${daily.length} rowsTotal=${daily.reduce((s, d) => s + d.rows, 0)} ${ms}ms`,
+    );
+    return res.json({ ok: true, daily, profiles: used, missing, ms });
   } catch (e) {
     const ms = Date.now() - t0;
     console.error(`[api/daily] 流处理失败 ${e?.message} ${ms}ms`);
     return res.status(500).json({
       ok: false,
       error: e instanceof Error ? e.message : String(e),
-      path: USAGE_CSV,
       ms,
     });
   }
-
-  const daily = [...byDay.values()].sort((a, b) =>
-    a.date.localeCompare(b.date),
-  );
-  const ms = Date.now() - t0;
-  console.log(
-    `[api/daily] 200 ok days=${daily.length} rowsTotal=${daily.reduce((s, d) => s + d.rows, 0)} ${ms}ms`,
-  );
-  return res.json({ ok: true, daily, ms });
 });
 
 app.get('/api/hourly', async (req, res) => {
   const t0 = Date.now();
-  if (!fs.existsSync(USAGE_CSV)) {
-    return res.status(404).json({
-      ok: false,
-      error: '找不到 usage CSV',
-      path: USAGE_CSV,
-    });
-  }
-
-  let daysLimit = Number(req.query.days);
-  if (!Number.isFinite(daysLimit) || daysLimit <= 0) daysLimit = 90;
-  daysLimit = Math.min(180, Math.round(daysLimit));
-
-  const startQ =
-    typeof req.query.start === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.start)
-      ? req.query.start
-      : null;
-  const endQ =
-    typeof req.query.end === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.end)
-      ? req.query.end
-      : null;
-
-  /**
-   * @type {Map<string, { date: string, hours: number[], costHours: number[], totalTokens: number, totalCost: number, rows: number }>}
-   */
-  const byDay = new Map();
-
   try {
-    await new Promise((resolve, reject) => {
-      const stream = createReadStream(USAGE_CSV, { encoding: 'utf8' });
-      stream.on('error', reject);
-      stream
-        .pipe(csv())
-        .on('data', (row) => {
-          const local = shanghaiDayHour(row[CSV_COL.date]);
-          if (!local) return;
+    const resolved = resolveRequestedProfiles(
+      REPO_ROOT,
+      profilesQueryParam(req),
+    );
+    if (!resolved.ok) {
+      return res.status(400).json({ ok: false, error: resolved.error });
+    }
 
-          const parsed = processUsageRow(row);
-          const rowTokens = parsed
-            ? parsed.rowTokens
-            : parseIntField(row[CSV_COL.cacheRead]) +
-              parseIntField(row[CSV_COL.inCacheWrite]) +
-              parseIntField(row[CSV_COL.inNoCache]) +
-              parseIntField(row[CSV_COL.output]);
-          const estimatedUsd = parsed ? parsed.estimatedUsd : 0;
+    let daysLimit = Number(req.query.days);
+    if (!Number.isFinite(daysLimit) || daysLimit <= 0) daysLimit = 90;
+    daysLimit = Math.min(180, Math.round(daysLimit));
 
-          let agg = byDay.get(local.date);
-          if (!agg) {
-            agg = {
-              date: local.date,
-              hours: Array.from({ length: 24 }, () => 0),
-              costHours: Array.from({ length: 24 }, () => 0),
-              totalTokens: 0,
-              totalCost: 0,
-              rows: 0,
-            };
-            byDay.set(local.date, agg);
-          }
-          agg.hours[local.hour] += rowTokens;
-          agg.costHours[local.hour] += estimatedUsd;
-          agg.totalTokens += rowTokens;
-          agg.totalCost += estimatedUsd;
-          agg.rows += 1;
-        })
-        .on('end', resolve)
-        .on('error', reject);
+    const startQ =
+      typeof req.query.start === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(req.query.start)
+        ? req.query.start
+        : null;
+    const endQ =
+      typeof req.query.end === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(req.query.end)
+        ? req.query.end
+        : null;
+
+    const chunks = [];
+    const used = [];
+    const missing = [];
+    for (const p of resolved.profiles) {
+      const result = await aggregateHourlyFromCsv(p.paths.usageCsv);
+      if (!result.ok) {
+        missing.push({ id: p.id, path: result.path, error: result.error });
+        continue;
+      }
+      chunks.push(result.days);
+      used.push(p.id);
+    }
+
+    if (used.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        error: '找不到 usage CSV（所选身份均无数据）',
+        missing,
+      });
+    }
+
+    let days = mergeHourlyLists(chunks);
+
+    if (startQ || endQ) {
+      days = days.filter((d) => {
+        if (startQ && d.date < startQ) return false;
+        if (endQ && d.date > endQ) return false;
+        return true;
+      });
+    } else if (days.length > daysLimit) {
+      days = days.slice(-daysLimit);
+    }
+
+    let csvMtimeIso = null;
+    for (const p of resolved.profiles) {
+      try {
+        const m = fs.statSync(p.paths.usageCsv).mtime.toISOString();
+        if (!csvMtimeIso || m > csvMtimeIso) csvMtimeIso = m;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const ms = Date.now() - t0;
+    console.log(
+      `[api/hourly] 200 ok profiles=${used.join('+')} days=${days.length} rowsTotal=${days.reduce((s, d) => s + d.rows, 0)} ${ms}ms`,
+    );
+    return res.json({
+      ok: true,
+      timezone: SHANGHAI_TZ,
+      today: todayShanghai(),
+      days,
+      profiles: used,
+      missing,
+      meta: {
+        generatedAt: new Date().toISOString(),
+        csvMtimeIso,
+        daysLimit: startQ || endQ ? null : daysLimit,
+        start: startQ,
+        end: endQ,
+      },
+      ms,
     });
   } catch (e) {
     const ms = Date.now() - t0;
@@ -687,57 +923,28 @@ app.get('/api/hourly', async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: e instanceof Error ? e.message : String(e),
-      path: USAGE_CSV,
       ms,
     });
   }
-
-  let days = [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
-
-  if (startQ || endQ) {
-    days = days.filter((d) => {
-      if (startQ && d.date < startQ) return false;
-      if (endQ && d.date > endQ) return false;
-      return true;
-    });
-  } else if (days.length > daysLimit) {
-    days = days.slice(-daysLimit);
-  }
-
-  let csvMtimeIso = null;
-  try {
-    csvMtimeIso = fs.statSync(USAGE_CSV).mtime.toISOString();
-  } catch {
-    /* ignore */
-  }
-
-  const ms = Date.now() - t0;
-  console.log(
-    `[api/hourly] 200 ok days=${days.length} rowsTotal=${days.reduce((s, d) => s + d.rows, 0)} ${ms}ms`,
-  );
-  return res.json({
-    ok: true,
-    timezone: SHANGHAI_TZ,
-    today: todayShanghai(),
-    days,
-    meta: {
-      generatedAt: new Date().toISOString(),
-      csvMtimeIso,
-      daysLimit: startQ || endQ ? null : daysLimit,
-      start: startQ,
-      end: endQ,
-    },
-    ms,
-  });
 });
 
 app.get('/api/period-stats', async (req, res) => {
   const t0 = Date.now();
-  if (!fs.existsSync(USAGE_CSV)) {
+  const resolved = resolveRequestedProfiles(
+    REPO_ROOT,
+    profilesQueryParam(req),
+  );
+  if (!resolved.ok) {
+    return res.status(400).json({ ok: false, error: resolved.error });
+  }
+
+  const csvPaths = resolved.profiles
+    .map((p) => ({ id: p.id, path: p.paths.usageCsv }))
+    .filter((x) => fs.existsSync(x.path));
+  if (csvPaths.length === 0) {
     return res.status(404).json({
       ok: false,
-      error: '找不到 usage CSV',
-      path: USAGE_CSV,
+      error: '找不到 usage CSV（所选身份均无数据）',
     });
   }
 
@@ -755,55 +962,56 @@ app.get('/api/period-stats', async (req, res) => {
   const billingMap = new Map();
 
   try {
-    await new Promise((resolve, reject) => {
-      const stream = createReadStream(USAGE_CSV, { encoding: 'utf8' });
-      stream.on('error', reject);
-      stream
-        .pipe(csv())
-        .on('data', (row) => {
-          const parsed = processUsageRow(row);
-          if (!parsed) return;
+    for (const { path: csvPath } of csvPaths) {
+      await new Promise((resolve, reject) => {
+        const stream = createReadStream(csvPath, { encoding: 'utf8' });
+        stream.on('error', reject);
+        stream
+          .pipe(csv())
+          .on('data', (row) => {
+            const parsed = processUsageRow(row);
+            if (!parsed) return;
 
-          const calKey = calendarMonthKey(parsed.day);
-          if (!calendarMap.has(calKey)) {
-            const range = calendarMonthRange(calKey);
-            calendarMap.set(
-              calKey,
-              createEmptyPeriodAgg(
+            const calKey = calendarMonthKey(parsed.day);
+            if (!calendarMap.has(calKey)) {
+              const range = calendarMonthRange(calKey);
+              calendarMap.set(
                 calKey,
-                calendarMonthLabel(calKey),
-                range.startDate,
-                range.endDate,
-              ),
-            );
-          }
-          addRowToPeriodAgg(calendarMap.get(calKey), parsed);
+                createEmptyPeriodAgg(
+                  calKey,
+                  calendarMonthLabel(calKey),
+                  range.startDate,
+                  range.endDate,
+                ),
+              );
+            }
+            addRowToPeriodAgg(calendarMap.get(calKey), parsed);
 
-          const billKey = billingCycleKeyFromDay(parsed.day, billingCycleDay);
-          if (!billingMap.has(billKey)) {
-            const range = billingCycleRange(billKey);
-            billingMap.set(
-              billKey,
-              createEmptyPeriodAgg(
+            const billKey = billingCycleKeyFromDay(parsed.day, billingCycleDay);
+            if (!billingMap.has(billKey)) {
+              const range = billingCycleRange(billKey);
+              billingMap.set(
                 billKey,
-                billingCycleLabel(billKey),
-                range.startDate,
-                range.endDate,
-              ),
-            );
-          }
-          addRowToPeriodAgg(billingMap.get(billKey), parsed);
-        })
-        .on('end', resolve)
-        .on('error', reject);
-    });
+                createEmptyPeriodAgg(
+                  billKey,
+                  billingCycleLabel(billKey),
+                  range.startDate,
+                  range.endDate,
+                ),
+              );
+            }
+            addRowToPeriodAgg(billingMap.get(billKey), parsed);
+          })
+          .on('end', resolve)
+          .on('error', reject);
+      });
+    }
   } catch (e) {
     const ms = Date.now() - t0;
     console.error(`[api/period-stats] 流处理失败 ${e?.message} ${ms}ms`);
     return res.status(500).json({
       ok: false,
       error: e instanceof Error ? e.message : String(e),
-      path: USAGE_CSV,
       ms,
     });
   }
@@ -811,8 +1019,9 @@ app.get('/api/period-stats', async (req, res) => {
   const calendarMonths = finalizePeriodList(calendarMap, 'calendar', billingCycleDay);
   const billingCycles = finalizePeriodList(billingMap, 'billing', billingCycleDay);
   const ms = Date.now() - t0;
+  const used = csvPaths.map((x) => x.id);
   console.log(
-    `[api/period-stats] 200 ok calendar=${calendarMonths.periods.length} billing=${billingCycles.periods.length} day=${billingCycleDay} ${ms}ms`,
+    `[api/period-stats] 200 ok profiles=${used.join('+')} calendar=${calendarMonths.periods.length} billing=${billingCycles.periods.length} day=${billingCycleDay} ${ms}ms`,
   );
 
   return res.json({
@@ -822,6 +1031,7 @@ app.get('/api/period-stats', async (req, res) => {
     billingCycleDayRange: { min: minDay, max: maxDay },
     calendarMonths,
     billingCycles,
+    profiles: used,
     ms,
   });
 });
@@ -1015,6 +1225,7 @@ app.get('/api/health', (_req, res) => {
       'reload',
       'sync',
       'refresh',
+      'profiles',
       'plugins',
       ...pluginHealth.plugins.flatMap((p) => p.features),
     ],
@@ -1022,16 +1233,33 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-function dataStatusPayload() {
+function dataStatusPayload(profileId = 'default') {
+  const profile =
+    getProfileById(REPO_ROOT, profileId) ||
+    getProfileById(REPO_ROOT, 'default');
+  if (!profile) {
+    return getDataStatus(REPO_ROOT, {
+      usageCsv: USAGE_CSV,
+      estimateJson: ESTIMATE_JSON,
+      modelRatesPath: MODEL_RATES_PATH,
+      profileId: 'default',
+    });
+  }
   return getDataStatus(REPO_ROOT, {
-    usageCsv: USAGE_CSV,
-    estimateJson: ESTIMATE_JSON,
+    usageCsv: profile.paths.usageCsv,
+    estimateJson: profile.paths.estimateJson,
     modelRatesPath: MODEL_RATES_PATH,
+    authPath: profile.paths.auth,
+    profileId: profile.id,
   });
 }
 
-app.get('/api/data-status', (_req, res) => {
-  res.json(dataStatusPayload());
+app.get('/api/data-status', (req, res) => {
+  const profileId =
+    typeof req.query.profile === 'string' && req.query.profile
+      ? req.query.profile
+      : listResolvedProfiles(REPO_ROOT).activeForSync || 'default';
+  res.json(dataStatusPayload(profileId));
 });
 
 app.post('/api/reload', (_req, res) => {
@@ -1039,47 +1267,149 @@ app.post('/api/reload', (_req, res) => {
   res.json({ ok: true, ...dataStatusPayload() });
 });
 
-app.post('/api/sync', async (_req, res) => {
-  console.log('[api/sync] 开始从 Cursor 拉取…');
-  const beforeAddons = snapshotMergeablePluginTotals(REPO_ROOT, loadedPlugins);
+app.get('/api/profiles', async (req, res) => {
+  const t0 = Date.now();
+  try {
+    ensureProfilesConfig(REPO_ROOT);
+    const refreshEmail =
+      req.query.refresh === '1' || req.query.refresh === 'true';
+    const data = await enrichProfilesForApi(REPO_ROOT, { refreshEmail });
+    const ms = Date.now() - t0;
+    console.log(
+      `[api/profiles] 200 ok count=${data.profiles.length} ${ms}ms`,
+    );
+    return res.json({ ok: true, ...data, ms });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+});
+
+app.post('/api/profiles', (req, res) => {
+  const id = req.body?.id;
+  const label = req.body?.label;
+  const result = createProfile(REPO_ROOT, { id, label });
+  if (!result.ok) {
+    return res.status(400).json(result);
+  }
+  console.log(`[api/profiles] 已添加身份 ${result.profile.id}`);
+  return res.status(201).json(result);
+});
+
+app.patch('/api/profiles/:id', (req, res) => {
+  const id = req.params.id;
+  if (req.body?.activeForSync === true || req.body?.setActive === true) {
+    const r = setActiveForSync(REPO_ROOT, id);
+    if (!r.ok) return res.status(400).json(r);
+  }
+  if (req.body?.label != null) {
+    const r = patchProfile(REPO_ROOT, id, { label: req.body.label });
+    if (!r.ok) return res.status(400).json(r);
+  }
+  return res.json({ ok: true, id });
+});
+
+app.post('/api/profiles/:id/refresh-email', async (req, res) => {
+  const profile = getProfileById(REPO_ROOT, req.params.id);
+  if (!profile) {
+    return res.status(404).json({ ok: false, error: '未知身份' });
+  }
+  const { resolveProfileIdentity } = await import('./profiles.js');
+  const identity = await resolveProfileIdentity(REPO_ROOT, profile, {
+    force: true,
+    allowNetwork: true,
+  });
+  return res.json({
+    ok: Boolean(identity.email),
+    email: identity.email,
+    name: identity.name,
+    source: identity.source,
+  });
+});
+
+async function runSyncForProfile(profileId, { runPlugins = true } = {}) {
+  const profile = getProfileById(REPO_ROOT, profileId);
+  if (!profile) {
+    return { ok: false, error: `未知身份: ${profileId}`, ms: 0 };
+  }
+  const beforeAddons =
+    runPlugins && profile.id === 'default'
+      ? snapshotMergeablePluginTotals(REPO_ROOT, loadedPlugins)
+      : null;
   const result = await syncFromCursor(REPO_ROOT, {
     reloadRates: reloadRatesConfig,
-    usageCsvPath: USAGE_CSV,
-    estimateJsonPath: ESTIMATE_JSON,
+    usageCsvPath: profile.paths.usageCsv,
+    estimateJsonPath: profile.paths.estimateJson,
+    authPath: profile.paths.auth,
+    profileId: profile.id,
+  });
+  result.profileId = profile.id;
+  if (result.ok && beforeAddons) {
+    const pluginSteps = await runEnabledPluginSyncSteps(
+      REPO_ROOT,
+      loadedPlugins,
+    );
+    result.pluginSteps = pluginSteps;
+    const afterAddons = snapshotMergeablePluginTotals(
+      REPO_ROOT,
+      loadedPlugins,
+    );
+    foldAddonDeltaIntoResult(result, beforeAddons, afterAddons);
+  }
+  // 同步成功后尝试刷新邮箱缓存
+  if (result.ok) {
+    try {
+      const { resolveProfileIdentity } = await import('./profiles.js');
+      await resolveProfileIdentity(REPO_ROOT, profile, {
+        force: true,
+        allowNetwork: true,
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+  return result;
+}
+
+app.post('/api/sync', async (req, res) => {
+  const bodyId =
+    typeof req.body?.profileId === 'string' ? req.body.profileId : null;
+  const active = listResolvedProfiles(REPO_ROOT).activeForSync || 'default';
+  const profileId = bodyId || active;
+  console.log(`[api/sync] 开始从 Cursor 拉取… profile=${profileId}`);
+  const result = await runSyncForProfile(profileId, {
+    runPlugins: profileId === 'default',
   });
   if (result.ok) {
-    const pluginSteps = await runEnabledPluginSyncSteps(REPO_ROOT, loadedPlugins);
-    result.pluginSteps = pluginSteps;
-    const afterAddons = snapshotMergeablePluginTotals(REPO_ROOT, loadedPlugins);
-    foldAddonDeltaIntoResult(result, beforeAddons, afterAddons);
     console.log(
-      `[api/sync] 200 ok ${result.ms}ms deltaUsd=${result.delta?.addedUsd?.toFixed?.(2)} tokens=${result.delta?.addedTokens}`,
+      `[api/sync] 200 ok profile=${profileId} ${result.ms}ms deltaUsd=${result.delta?.addedUsd?.toFixed?.(2)} tokens=${result.delta?.addedTokens}`,
     );
     return res.json(result);
   }
-  console.error(`[api/sync] 失败 ${result.ms}ms: ${result.error}`);
+  console.error(`[api/sync] 失败 profile=${profileId} ${result.ms}ms: ${result.error}`);
   return res.status(result.partial ? 207 : 500).json(result);
 });
 
 /** @deprecated 兼容旧前端；等价于 POST /api/sync */
-app.post('/api/refresh', async (_req, res) => {
-  console.log('[api/refresh] 开始拉取最新数据...');
-  const beforeAddons = snapshotMergeablePluginTotals(REPO_ROOT, loadedPlugins);
-  const result = await syncFromCursor(REPO_ROOT, {
-    reloadRates: reloadRatesConfig,
-    usageCsvPath: USAGE_CSV,
-    estimateJsonPath: ESTIMATE_JSON,
+app.post('/api/refresh', async (req, res) => {
+  const bodyId =
+    typeof req.body?.profileId === 'string' ? req.body.profileId : null;
+  const active = listResolvedProfiles(REPO_ROOT).activeForSync || 'default';
+  const profileId = bodyId || active;
+  console.log(`[api/refresh] 开始拉取最新数据... profile=${profileId}`);
+  const result = await runSyncForProfile(profileId, {
+    runPlugins: profileId === 'default',
   });
   if (result.ok) {
-    const pluginSteps = await runEnabledPluginSyncSteps(REPO_ROOT, loadedPlugins);
-    const afterAddons = snapshotMergeablePluginTotals(REPO_ROOT, loadedPlugins);
-    foldAddonDeltaIntoResult(result, beforeAddons, afterAddons);
     console.log(`[api/refresh] 200 ok 刷新成功 ${result.ms}ms`);
     return res.json({
       ok: true,
       ms: result.ms,
+      profileId,
       steps: result.steps,
-      pluginSteps,
+      pluginSteps: result.pluginSteps,
       delta: result.delta,
     });
   }
@@ -1130,6 +1460,8 @@ function foldAddonDeltaIntoResult(result, before, after) {
       (Number(result.delta.addedRows) || 0) + addedRows;
   }
 }
+
+ensureProfilesConfig(REPO_ROOT);
 
 const bootPlugins = await loadPlugins(REPO_ROOT);
 loadedPlugins = bootPlugins.plugins;

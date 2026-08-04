@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "activeForSync": "default",
+  "profiles": [
+    {
+      "id": "default",
+      "label": "主账号",
+      "legacy": true,
+      "authPath": "data/auth.json",
+      "browserProfile": "data/browser-profile",
+      "usageCsv": "exports/usage.csv",
+      "estimateJson": "reports/estimate.json"
+    }
+  ],
+  "$comment": "复制为 config/profiles.json（首次启动也会自动生成）。新增身份用看板右上角，或 POST /api/profiles。"
+}

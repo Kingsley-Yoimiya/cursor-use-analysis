@@ -57,9 +57,13 @@ function calcCacheHitRate(t: ModelEntry['tokens']): number {
 export function ModelLeaderboard({
   refreshKey,
   foldPluginIds = [],
+  profilesQuery,
+  profilesKey,
 }: {
   refreshKey?: number
   foldPluginIds?: string[]
+  profilesQuery?: string
+  profilesKey?: string
 }) {
   const [models, setModels] = useState<ModelEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -70,7 +74,9 @@ export function ModelLeaderboard({
   useEffect(() => {
     setLoading(true)
     const load = async () => {
-      const r = await axios.get<SummaryResponse>('/api/summary')
+      const r = await axios.get<SummaryResponse>('/api/summary', {
+        params: profilesQuery ? { profiles: profilesQuery } : undefined,
+      })
       if (!r.data.ok || !r.data.data?.byModel) {
         setError(r.data.error ?? '接口返回异常')
         setModels([])
@@ -98,7 +104,7 @@ export function ModelLeaderboard({
     load()
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false))
-  }, [refreshKey, foldPluginIds.join('|')])
+  }, [refreshKey, foldPluginIds.join('|'), profilesKey, profilesQuery])
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
