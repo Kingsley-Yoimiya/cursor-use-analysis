@@ -59,7 +59,58 @@ function fmtPercent(n: number): string {
   return `${(n * 100).toFixed(1)}%`
 }
 
-// ────────── 单张 KPI 卡片 ──────────
+// ────────── 迷你 Sparkline 趋势组件 ──────────
+
+function Sparkline({
+  data,
+  color = '#10b981',
+  height = 32,
+}: {
+  data?: number[]
+  color?: string
+  height?: number
+}) {
+  if (!data || data.length < 2) return null
+  const width = 110
+  const max = Math.max(...data, 0.0001)
+  const min = Math.min(...data)
+  const range = max - min || 1
+
+  const points = data.map((val, idx) => {
+    const x = (idx / (data.length - 1)) * width
+    const y = height - ((val - min) / range) * (height - 6) - 3
+    return { x, y }
+  })
+
+  const pathD = points.reduce(
+    (acc, p, i) => (i === 0 ? `M ${p.x},${p.y}` : `${acc} L ${p.x},${p.y}`),
+    '',
+  )
+  const areaD = `${pathD} L ${width},${height} L 0,${height} Z`
+  const gradId = `sparkline-${Math.random().toString(36).substring(2, 7)}`
+
+  return (
+    <svg className="w-24 h-8 shrink-0 overflow-visible opacity-90" viewBox={`0 0 ${width} ${height}`}>
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.0" />
+        </linearGradient>
+      </defs>
+      <path d={areaD} fill={`url(#${gradId})`} />
+      <path
+        d={pathD}
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+// ────────── Nordic 极简单张 KPI 卡片 ──────────
 
 interface KPICardProps {
   label: string
@@ -68,6 +119,8 @@ interface KPICardProps {
   valueColor?: string
   tone?: string
   delta?: string | null
+  sparklineData?: number[]
+  sparklineColor?: string
 }
 
 function KPICard({
@@ -75,27 +128,40 @@ function KPICard({
   value,
   sub,
   valueColor = 'text-fg',
-  tone = 'var(--accent)',
+  tone = '#10b981',
   hero = false,
   delta = null,
+  sparklineData,
+  sparklineColor,
 }: KPICardProps & { hero?: boolean }) {
   return (
     <div
-      className={`kpi-card ${hero ? 'kpi-hero' : ''}`}
-      style={{ ['--kpi-tone' as string]: tone }}
+      className="p-4 md:p-5 bg-surface border border-line rounded-xl shadow-sm hover:border-line/80 transition-all flex flex-col justify-between"
     >
-      <p className="section-label">{label}</p>
-      <p
-        className={`mt-1.5 kpi-value tracking-tight ${hero ? '' : 'text-lg'} ${valueColor}`}
-      >
-        {value}
-      </p>
-      {delta ? (
-        <span key={delta} className="kpi-delta" role="status">
-          {delta}
-        </span>
-      ) : null}
-      {sub && <p className="mt-1 text-[11px] text-fg-muted leading-snug">{sub}</p>}
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-faint">{label}</p>
+          <p
+            className={`mt-1 font-mono tracking-tight font-bold ${hero ? 'text-2xl md:text-3xl' : 'text-xl md:text-2xl'} ${valueColor}`}
+          >
+            {value}
+          </p>
+        </div>
+        {sparklineData && sparklineData.length > 1 && (
+          <div className="pt-1">
+            <Sparkline data={sparklineData} color={sparklineColor || tone} />
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-line/50 pt-2 text-xs">
+        {sub && <p className="text-[11px] text-fg-muted font-medium truncate">{sub}</p>}
+        {delta ? (
+          <span key={delta} className="kpi-delta shrink-0" role="status">
+            {delta}
+          </span>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -110,12 +176,14 @@ export function KPICards({
   syncPulse = null,
   profilesQuery,
   profilesKey,
+  daily = null,
 }: {
   refreshKey?: number
   foldPluginIds?: string[]
   syncPulse?: SyncPulse | null
   profilesQuery?: string
   profilesKey?: string
+  daily?: any[] | null
 }) {
   const [data, setData] = useState<SummaryData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -288,78 +356,93 @@ export function KPICards({
     }
   }
 
+  const costTrend = daily ? daily.map((d) => d.cost || 0) : []
+  const tokenTrend = daily ? daily.map((d) => d.totalTokens || 0) : []
+  const rowTrend = daily ? daily.map((d) => d.rows || 0) : []
+  const cacheRateTrend = daily
+    ? daily.map((d) =>
+        d.cacheRead + d.inputNoCache > 0
+          ? d.cacheRead / (d.cacheRead + d.inputNoCache)
+          : 0,
+      )
+    : []
+
+  const avgCostPerReq = totals.rows && totals.rows > 0 && totals.totalEstimatedUsd
+    ? totals.totalEstimatedUsd / totals.rows
+    : 0
+
+  const avgCostTrend = daily
+    ? daily.map((d) => (d.rows > 0 ? d.cost / d.rows : 0))
+    : []
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="section-title">KPI 概览</h2>
+        <h2 className="section-title">核心 KPI 概览</h2>
         {generatedAt && (
           <span className="text-[11px] text-fg-faint">
             数据生成于 {generatedAt}
           </span>
         )}
       </div>
-      <div className="grid gap-3 lg:grid-cols-12">
+
+      <div className="grid gap-4 lg:grid-cols-12">
+        {/* Total USD 主高亮卡片 */}
         <div className="lg:col-span-4">
           <KPICard
             hero
-            label="估算 API 总价值"
+            label="Total Estimated Cost"
             value={
               totals.totalEstimatedUsd != null
                 ? fmtUsd(totals.totalEstimatedUsd)
                 : '—'
             }
-            sub="按公开文档单价计算，不等同于发票"
-            valueColor="text-accent"
-            tone="var(--accent)"
+            sub="估算 API 总消耗价值 (USD)"
+            valueColor="text-emerald-600 dark:text-emerald-400"
+            tone="#10b981"
             delta={valueDelta}
+            sparklineData={costTrend}
+            sparklineColor="#10b981"
           />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 lg:col-span-8">
+
+        {/* 4 核心分项卡片网格 */}
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 lg:col-span-8">
           <KPICard
-            label="总请求行数"
-            value={totals.rows != null ? fmtInt(totals.rows) : '—'}
-            sub={`未识别模型：${totals.unknownModelRows ?? 0} 行`}
-            valueColor="text-violet"
-            tone="var(--violet)"
-            delta={rowsDelta}
-          />
-          <KPICard
-            label="总 Token 消耗"
+            label="Total Tokens Used"
             value={fmtTokens(totalTokens)}
             sub={`Cache Read ${fmtTokens(totalCacheRead)}`}
-            valueColor="text-info"
-            tone="var(--info)"
+            valueColor="text-blue-600 dark:text-blue-400"
+            tone="#3b82f6"
             delta={tokenDelta}
+            sparklineData={tokenTrend}
+            sparklineColor="#3b82f6"
           />
           <KPICard
-            label="缓存命中率"
-            value={fmtPercent(cacheHitRate)}
-            sub="Cache Read / Total Input"
-            valueColor={
-              cacheHitRate > 0.7
-                ? 'text-accent'
-                : cacheHitRate > 0.5
-                  ? 'text-warning'
-                  : 'text-danger'
-            }
-            tone={
-              cacheHitRate > 0.7
-                ? 'var(--accent)'
-                : cacheHitRate > 0.5
-                  ? 'var(--warning)'
-                  : 'var(--danger)'
-            }
+            label="Request Count"
+            value={totals.rows != null ? fmtInt(totals.rows) : '—'}
+            sub={`未识别模型：${totals.unknownModelRows ?? 0} 行`}
+            valueColor="text-fg"
+            tone="#8b5cf6"
+            delta={rowsDelta}
+            sparklineData={rowTrend}
+            sparklineColor="#8b5cf6"
           />
           <KPICard
-            label="最高消耗模型"
-            value={topModel ? topModel.model : '—'}
-            sub={
-              topModel
-                ? `${fmtUsd(topModel.estimatedUsd)} · ${fmtInt(topModel.requests)} 次`
-                : undefined
-            }
-            valueColor="text-warning"
-            tone="var(--warning)"
+            label="Model Breakdown"
+            value={`${models.length} Models`}
+            sub={topModel ? `Top: ${topModel.model}` : 'Active Models'}
+            valueColor="text-fg"
+            tone="#f59e0b"
+          />
+          <KPICard
+            label="Avg Cost / Request"
+            value={`$${avgCostPerReq.toFixed(4)}`}
+            sub="平均单次请求成本"
+            valueColor="text-fg"
+            tone="#ef4444"
+            sparklineData={avgCostTrend}
+            sparklineColor="#ef4444"
           />
         </div>
       </div>

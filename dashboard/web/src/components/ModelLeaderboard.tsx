@@ -152,12 +152,44 @@ export function ModelLeaderboard({
     )
   }
 
+  const maxCost = sorted.length > 0 ? Math.max(...sorted.map((s) => s.estimatedUsd)) : 1
+
+  const getVendorBadge = (name: string) => {
+    const lower = name.toLowerCase()
+    if (lower.includes('claude')) {
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50 mr-2 shrink-0">
+          Anthropic
+        </span>
+      )
+    }
+    if (lower.includes('gpt') || lower.includes('o1') || lower.includes('o3')) {
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 mr-2 shrink-0">
+          OpenAI
+        </span>
+      )
+    }
+    if (lower.includes('gemini')) {
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 mr-2 shrink-0">
+          Google
+        </span>
+      )
+    }
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 mr-2 shrink-0">
+        Cursor
+      </span>
+    )
+  }
+
   return (
     <div className="panel overflow-hidden">
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-line-subtle">
-        <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
-          模型排行榜
+        <h3 className="text-xs font-semibold uppercase tracking-widest text-fg-faint">
+          模型用量排行榜
         </h3>
         <span className="text-[11px] text-fg-faint font-mono">
           {sorted.length} 个模型
@@ -170,9 +202,9 @@ export function ModelLeaderboard({
           <thead>
             <tr className="bg-surface-2">
               <th className={thClass}>#</th>
-              <th className={thClass}>模型</th>
+              <th className={thClass}>模型名称</th>
               <th className={thSortClass} onClick={() => handleSort('usd')}>
-                总金额 (USD)<SortIcon col="usd" />
+                总估算金额 (USD)<SortIcon col="usd" />
               </th>
               <th className={thSortClass} onClick={() => handleSort('requests')}>
                 请求数<SortIcon col="requests" />
@@ -196,30 +228,43 @@ export function ModelLeaderboard({
 
               const rankBadge =
                 i === 0
-                  ? 'bg-warning-soft text-warning'
+                  ? 'bg-warning-soft text-warning font-bold'
                   : i === 1
-                  ? 'bg-surface-2 text-fg-muted'
+                  ? 'bg-surface-2 text-fg-muted font-bold'
                   : i === 2
-                  ? 'bg-accent-soft text-accent-muted'
+                  ? 'bg-accent-soft text-accent-muted font-bold'
                   : 'bg-transparent text-fg-faint'
+
+              const costPercent = maxCost > 0 ? (m.estimatedUsd / maxCost) * 100 : 0
 
               return (
                 <tr
                   key={m.model}
-                  className="hover:bg-surface-2 transition-colors"
+                  className="hover:bg-surface-2/60 transition-colors"
                 >
                   <td className="px-4 py-3 w-10">
-                    <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${rankBadge}`}>
+                    <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs ${rankBadge}`}>
                       {i + 1}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="font-mono text-xs text-fg break-all">
-                      {m.model}
-                    </span>
+                    <div className="flex items-center">
+                      {getVendorBadge(m.model)}
+                      <span className="font-mono text-xs font-semibold text-fg break-all">
+                        {m.model}
+                      </span>
+                    </div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-sm font-semibold text-accent whitespace-nowrap">
-                    {fmtUsd(m.estimatedUsd)}
+                  <td className="px-4 py-3 font-mono text-xs font-semibold text-fg">
+                    <div className="space-y-1">
+                      <div>{fmtUsd(m.estimatedUsd)}</div>
+                      <div className="w-24 h-1.5 rounded-full bg-surface-2 overflow-hidden">
+                        <div
+                          className="h-full bg-accent rounded-full transition-all duration-300"
+                          style={{ width: `${Math.max(costPercent, 2)}%` }}
+                        />
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3 font-mono text-sm text-fg whitespace-nowrap">
                     {fmtInt(m.requests)}

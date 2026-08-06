@@ -1,7 +1,8 @@
 /**
- * 多日 × 24h token 热力条（Asia/Shanghai）
+ * 多日 × 24h 热力条（Asia/Shanghai）
+ * 可切换 Token / 估算 USD；高度由父级锁定，内部滚动
  */
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useChartColors } from '../context/ThemeContext'
 import { ChartPanel } from '../lib/chartChrome'
 import { fmtTokens } from '../lib/formatTokens'
@@ -15,18 +16,20 @@ export interface HourlyDay {
   rows: number
 }
 
+export type HeatMetric = 'tokens' | 'cost'
+
 interface HourlyHeatmapChartProps {
   days: HourlyDay[] | null
   selectedDate: string | null
   onSelectDate: (date: string) => void
   today?: string | null
   maxRows?: number
+  className?: string
 }
 
 function heatColor(t: number, accent: string, empty: string): string {
   if (t <= 0) return empty
   const clamped = Math.min(1, Math.max(0, t))
-  // 低→高：淡底 → accent
   const a = 0.12 + clamped * 0.88
   return `color-mix(in srgb, ${accent} ${Math.round(a * 100)}%, transparent)`
 }
@@ -39,37 +42,67 @@ function fmtDayLabel(date: string, today?: string | null): string {
   return base
 }
 
+function fmtUsdShort(n: number): string {
+  if (!Number.isFinite(n)) return '—'
+  if (Math.abs(n) >= 100) return `$${n.toFixed(0)}`
+  if (Math.abs(n) >= 10) return `$${n.toFixed(1)}`
+  return `$${n.toFixed(2)}`
+}
+
+function dayCost(d: HourlyDay): number {
+  if (d.totalCost != null && Number.isFinite(d.totalCost)) return d.totalCost
+  return (d.costHours || []).reduce((s, v) => s + v, 0)
+}
+
+function hourValues(d: HourlyDay, metric: HeatMetric): number[] {
+  if (metric === 'cost') {
+    return Array.from({ length: 24 }, (_, h) => Number(d.costHours?.[h] || 0))
+  }
+  return Array.from({ length: 24 }, (_, h) => Number(d.hours?.[h] || 0))
+}
+
 export function HourlyHeatmapChart({
   days,
   selectedDate,
   onSelectDate,
   today = null,
   maxRows = 90,
+  className = '',
 }: HourlyHeatmapChartProps) {
   const colors = useChartColors()
+  const [metric, setMetric] = useState<HeatMetric>('tokens')
 
   const viewDays = useMemo(() => {
     if (!days) return null
     return days.length > maxRows ? days.slice(-maxRows) : days
   }, [days, maxRows])
 
+  const accent = metric === 'cost' ? colors.chart2 : colors.chart1
+
   const maxHour = useMemo(() => {
     if (!viewDays?.length) return 1
     let m = 0
     for (const d of viewDays) {
-      for (const h of d.hours) if (h > m) m = h
+      for (const h of hourValues(d, metric)) if (h > m) m = h
     }
     return m || 1
-  }, [viewDays])
+  }, [viewDays, metric])
 
   if (!viewDays) {
-    return <div className="h-64 animate-pulse panel bg-surface-2" />
+    return (
+      <div className={`h-full animate-pulse panel bg-surface-2 ${className}`} />
+    )
   }
 
   if (viewDays.length === 0) {
     return (
-      <ChartPanel title="每日 × 24 小时热力（UTC+8）">
-        <p className="text-sm text-fg-muted py-8 text-center">暂无小时级用量数据</p>
+      <ChartPanel
+        title="每日 × 24 小时热力（UTC+8）"
+        className={`h-full ${className}`}
+      >
+        <p className="text-sm text-fg-muted py-8 text-center">
+          暂无小时级用量数据
+        </p>
       </ChartPanel>
     )
   }
@@ -79,18 +112,33 @@ export function HourlyHeatmapChart({
   return (
     <ChartPanel
       title="每日 × 24 小时热力（UTC+8）"
+      className={`h-full overflow-hidden ${className}`}
+      bodyClassName="flex flex-col min-h-0 overflow-hidden"
       actions={
-        <span className="text-[11px] text-fg-faint font-mono">
-          {viewDays.length} 天 · 点选展开
-        </span>
+        <div className="toolbar-cluster">
+          <button
+            type="button"
+            className={`range-preset ${metric === 'tokens' ? 'is-active' : ''}`}
+            onClick={() => setMetric('tokens')}
+          >
+            Token
+          </button>
+          <button
+            type="button"
+            className={`range-preset ${metric === 'cost' ? 'is-active' : ''}`}
+            onClick={() => setMetric('cost')}
+          >
+            金额
+          </button>
+        </div>
       }
     >
-      <div className="overflow-x-auto">
-        <div className="min-w-[640px]">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <div className="min-w-[560px]">
           <div
-            className="grid gap-px mb-1 text-[9px] font-mono text-fg-faint"
+            className="grid gap-px mb-1 text-[9px] font-mono text-fg-faint sticky top-0 bg-surface z-[1]"
             style={{
-              gridTemplateColumns: '64px repeat(24, minmax(0, 1fr)) 72px',
+              gridTemplateColumns: '56px repeat(24, minmax(0, 1fr)) 64px',
             }}
           >
             <span />
@@ -102,9 +150,13 @@ export function HourlyHeatmapChart({
             <span className="text-right pr-1">合计</span>
           </div>
 
-          <div className="max-h-[320px] overflow-y-auto space-y-px">
+          <div className="space-y-px">
             {[...viewDays].reverse().map((d) => {
               const selected = d.date === selectedDate
+              const vals = hourValues(d, metric)
+              const total = metric === 'cost' ? dayCost(d) : d.totalTokens
+              const totalLabel =
+                metric === 'cost' ? fmtUsdShort(total) : fmtTokens(total)
               return (
                 <button
                   key={d.date}
@@ -116,29 +168,33 @@ export function HourlyHeatmapChart({
                       : 'hover:bg-surface-2'
                   }`}
                   style={{
-                    gridTemplateColumns: '64px repeat(24, minmax(0, 1fr)) 72px',
+                    gridTemplateColumns: '56px repeat(24, minmax(0, 1fr)) 64px',
                   }}
-                  title={`${d.date} · ${fmtTokens(d.totalTokens)} token · ${d.rows} 行`}
+                  title={`${d.date} · ${fmtTokens(d.totalTokens)} · ${fmtUsdShort(dayCost(d))} · ${d.rows} 行`}
                 >
                   <span
                     className={`text-[10px] font-mono self-center text-left pl-0.5 truncate ${
-                      d.date === today ? 'text-accent font-semibold' : 'text-fg-muted'
+                      d.date === today
+                        ? 'text-accent font-semibold'
+                        : 'text-fg-muted'
                     }`}
                   >
                     {fmtDayLabel(d.date, today)}
                   </span>
-                  {d.hours.map((v, h) => (
+                  {vals.map((v, h) => (
                     <span
                       key={h}
-                      className="h-4 rounded-[1px]"
+                      className="h-3.5 rounded-[1px]"
                       style={{
-                        background: heatColor(v / maxHour, colors.chart1, emptyCell),
+                        background: heatColor(v / maxHour, accent, emptyCell),
                       }}
-                      title={`${String(h).padStart(2, '0')}:00 · ${fmtTokens(v)}`}
+                      title={`${String(h).padStart(2, '0')}:00 · ${
+                        metric === 'cost' ? fmtUsdShort(v) : fmtTokens(v)
+                      }`}
                     />
                   ))}
                   <span className="text-[10px] font-mono text-fg-muted self-center text-right pr-1">
-                    {fmtTokens(d.totalTokens)}
+                    {totalLabel}
                   </span>
                 </button>
               )
@@ -146,10 +202,6 @@ export function HourlyHeatmapChart({
           </div>
         </div>
       </div>
-      <p className="mt-2 text-[11px] text-fg-faint">
-        颜色越深该小时 token 越多（相对窗内峰值）。Token = Cache Write + No-Cache + Cache Read +
-        Output。
-      </p>
     </ChartPanel>
   )
 }

@@ -34,18 +34,22 @@ export function ChartPanel({
   title,
   actions,
   children,
+  className = '',
+  bodyClassName = '',
 }: {
   title: string
   actions?: ReactNode
   children: ReactNode
+  className?: string
+  bodyClassName?: string
 }) {
   return (
-    <div className="panel p-3">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className={`panel p-3 flex flex-col min-h-0 ${className}`.trim()}>
+      <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
         <h3 className="panel-title">{title}</h3>
         {actions}
       </div>
-      {children}
+      <div className={`min-h-0 flex-1 ${bodyClassName}`.trim()}>{children}</div>
     </div>
   )
 }

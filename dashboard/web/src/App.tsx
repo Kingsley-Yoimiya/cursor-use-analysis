@@ -25,6 +25,7 @@ import { ThemePalettePicker } from './components/ThemePalettePicker'
 import { DataSyncBar } from './components/DataSyncBar'
 import { ProfileSwitcher } from './components/ProfileSwitcher'
 import { UsageRhythmSection } from './components/UsageRhythmSection'
+import { SmartInsightBanner } from './components/SmartInsightBanner'
 import { mergeDailyEntries, type DailyEntry as MergeDailyEntry } from './lib/mergeDaily'
 import type { SyncPulse } from './lib/syncPulse'
 
@@ -328,13 +329,22 @@ function AppShell() {
     <div className="min-h-screen bg-canvas text-fg transition-colors duration-200">
 
       {/* 顶部导航栏 */}
-      <header className="app-header sticky top-0 z-10 px-6 py-3 md:px-10">
+      <header className="app-header sticky top-0 z-10 px-4 py-3 md:px-8 bg-surface/90 backdrop-blur-md border-b border-line">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-accent" />
-            <h1 className="text-base font-bold tracking-tight text-fg md:text-lg truncate">
-              Cursor 用量面板
-            </h1>
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500 text-white font-bold text-xs shadow-sm shrink-0">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <div className="flex items-center gap-2 min-w-0">
+              <h1 className="text-sm md:text-base font-bold tracking-tight text-fg truncate">
+                CURSOR <span className="font-semibold text-fg-muted">API Analytics</span>
+              </h1>
+              <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                Live
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <span className="text-xs text-fg-faint font-mono hidden md:block">
@@ -358,7 +368,7 @@ function AppShell() {
               <button
                 type="button"
                 onClick={toggleMode}
-                className="btn-icon !border-0 !bg-transparent hover:!bg-surface"
+                className="btn-icon !border-0 !bg-transparent hover:!bg-surface-2"
                 title={isDark ? '切换到亮色模式' : '切换到暗色模式'}
                 aria-label={isDark ? '切换到亮色模式' : '切换到暗色模式'}
               >
@@ -418,16 +428,95 @@ function AppShell() {
         {/* ── 概览 Tab ── */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            {mergeEnabled && addonSources.length > 0 && (
-              <p className="text-[11px] text-accent">
-                已合并本地附加用量到概览（按公开单价估算）；报销 Tab 仍为主数据源。
-              </p>
-            )}
-            {selectedIds.length > 1 && selectedSummary && (
-              <p className="text-[11px] text-fg-muted">
-                多身份汇总：{selectedSummary}
-              </p>
-            )}
+            {/* 概览标题与快捷控制栏 */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-line/60">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xl md:text-2xl font-bold tracking-tight text-fg">
+                    Token Usage Overview
+                  </h2>
+                  {selectedIds.length > 1 && selectedSummary && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-surface-2 text-fg-muted border border-line">
+                      多身份: {selectedSummary}
+                    </span>
+                  )}
+                  {mergeEnabled && addonSources.length > 0 && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/40" title="已合并本地附加用量到概览（按公开单价估算）">
+                      已合并附加源
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-fg-muted mt-1">
+                  {dateRange ? `${startDate || dateRange.min} 至 ${endDate || dateRange.max}` : '全局用量看板'}
+                </p>
+              </div>
+
+              <div className="flex items-center flex-wrap gap-2.5">
+                {/* 预设天数 Pill 按钮组 */}
+                <div className="inline-flex p-1 bg-surface-2 border border-line rounded-lg text-xs">
+                  {(
+                    [
+                      { id: '7' as const, label: '7D', days: 7 },
+                      { id: '30' as const, label: '30D', days: 30 },
+                      { id: '90' as const, label: '90D', days: 90 },
+                      { id: 'all' as const, label: 'All', days: null },
+                    ] as const
+                  ).map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                        activePreset === p.id
+                          ? 'bg-surface text-fg shadow-sm'
+                          : 'text-fg-muted hover:text-fg'
+                      }`}
+                      onClick={() =>
+                        p.days == null ? clearDateFilter() : applyLastDays(p.days)
+                      }
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 日期选择 Pill */}
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-surface border border-line rounded-lg text-xs font-semibold text-fg shadow-sm">
+                  <svg className="w-3.5 h-3.5 text-fg-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <input
+                    type="date"
+                    value={startDate}
+                    min={dateRange?.min}
+                    max={dateRange?.max}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="bg-transparent focus:outline-none text-fg font-mono cursor-pointer"
+                  />
+                  <span className="text-fg-faint">-</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    min={dateRange?.min}
+                    max={dateRange?.max}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="bg-transparent focus:outline-none text-fg font-mono cursor-pointer"
+                  />
+                  {(startDate || endDate) && (
+                    <button
+                      type="button"
+                      onClick={clearDateFilter}
+                      className="ml-1 text-[11px] font-semibold text-fg-muted hover:text-fg"
+                      title="重置日期"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <SmartInsightBanner daily={displayDaily} />
+
             <section>
               <KPICards
                 refreshKey={refreshKey}
@@ -435,76 +524,8 @@ function AppShell() {
                 syncPulse={syncPulse}
                 profilesQuery={profilesQuery}
                 profilesKey={selectedKey}
+                daily={displayDaily}
               />
-            </section>
-
-            {/* 日期范围筛选器 */}
-            <section className="flex items-center flex-wrap gap-3 panel bg-surface-2 px-3 py-2">
-              <span className="section-label shrink-0">
-                日期筛选
-              </span>
-              <div className="toolbar-cluster">
-                {(
-                  [
-                    { id: '7' as const, label: '7 天', days: 7 },
-                    { id: '30' as const, label: '30 天', days: 30 },
-                    { id: '90' as const, label: '90 天', days: 90 },
-                    { id: 'all' as const, label: '全部', days: null },
-                  ] as const
-                ).map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className={`range-preset ${activePreset === p.id ? 'is-active' : ''}`}
-                    onClick={() =>
-                      p.days == null ? clearDateFilter() : applyLastDays(p.days)
-                    }
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-              <label className="flex items-center gap-2 text-xs font-medium text-fg-muted">
-                开始
-                <input
-                  type="date"
-                  value={startDate}
-                  min={dateRange?.min}
-                  max={dateRange?.max}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-elevated border border-line rounded-lg px-2.5 py-1.5 text-xs font-semibold text-fg
-                             focus:outline-none focus:border-accent transition-colors cursor-pointer"
-                />
-              </label>
-              <span className="text-fg-faint text-xs">—</span>
-              <label className="flex items-center gap-2 text-xs font-medium text-fg-muted">
-                结束
-                <input
-                  type="date"
-                  value={endDate}
-                  min={dateRange?.min}
-                  max={dateRange?.max}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-elevated border border-line rounded-lg px-2.5 py-1.5 text-xs font-semibold text-fg
-                             focus:outline-none focus:border-accent transition-colors cursor-pointer"
-                />
-              </label>
-              {(startDate || endDate) && (
-                <button
-                  type="button"
-                  onClick={clearDateFilter}
-                  className="text-xs font-semibold text-fg-muted hover:text-fg underline underline-offset-2 ml-1 transition-colors"
-                >
-                  重置
-                </button>
-              )}
-              <span className="ml-auto text-xs font-semibold text-fg-muted font-mono">
-                {filteredDaily != null
-                  ? `${filteredDaily.length} 天${mergeEnabled ? ' · 含附加源' : ''}`
-                  : daily
-                  ? `${daily.length} 天`
-                  : '加载中…'}
-              </span>
             </section>
 
             {/* 使用节奏：热力 + 分布对比 */}
@@ -535,6 +556,12 @@ function AppShell() {
                   <TokenDistChart daily={filteredDaily} />
                 </div>
                 <ModelUsageChart daily={filteredDaily} />
+                <ModelLeaderboard
+                  refreshKey={refreshKey}
+                  foldPluginIds={mergeSourceIds}
+                  profilesQuery={profilesQuery}
+                  profilesKey={selectedKey}
+                />
               </section>
             )}
           </div>

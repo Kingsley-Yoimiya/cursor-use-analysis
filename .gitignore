@@ -27,3 +27,7 @@ config/plugins.local.json
 config/profiles.json
 plugins-private/
 
+# 系统临时文件与日志
+.DS_Store
+*.DS_Store
+logs/

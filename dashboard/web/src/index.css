@@ -8,97 +8,105 @@
  */
 
 html {
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --press-ms: 120ms;
-  --header-bg: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  --header-bg: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg);
+  color: var(--fg);
 }
 
 :root,
 [data-palette='default'] {
-  --bg: #f1f5f9;
+  --bg: #f8fafc;
   --bg-elevated: #ffffff;
   --surface: #ffffff;
-  --surface-2: #e8eef5;
-  --border: #cbd5e1;
-  --border-subtle: #e2e8f0;
-  --shadow: none;
-  --fg: #020617;
+  --surface-2: #f1f5f9;
+  --border: #e2e8f0;
+  --border-subtle: #f1f5f9;
+  --shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
+  --fg: #0f172a;
   --fg-muted: #475569;
-  --fg-faint: #64748b;
-  --accent: #047857;
+  --fg-faint: #94a3b8;
+  --accent: #10b981;
   --accent-fg: #ffffff;
   --accent-muted: #059669;
-  --accent-soft: rgb(4 120 87 / 0.12);
-  --danger: #dc2626;
+  --accent-soft: rgb(16 185 129 / 0.1);
+  --danger: #ef4444;
   --danger-soft: #fef2f2;
   --danger-border: #fecaca;
-  --warning: #b45309;
+  --warning: #f59e0b;
   --warning-soft: #fffbeb;
   --warning-border: #fde68a;
-  --success: #047857;
-  --info: #0369a1;
-  --violet: #6d28d9;
-  --chart-grid: #cbd5e1;
+  --success: #10b981;
+  --info: #3b82f6;
+  --violet: #8b5cf6;
+  --chart-grid: #f1f5f9;
   --chart-tick: #64748b;
-  --chart-cursor: #cbd5e140;
-  --chart-1: #059669;
-  --chart-2: #2563eb;
-  --chart-3: #16a34a;
-  --chart-4: #ea580c;
-  --chart-5: #7c3aed;
-  --pool-auto: #d97706;
-  --pool-first: #7c3aed;
-  --pool-api: #0891b2;
-  --swatch-1: #f1f5f9;
+  --chart-cursor: #e2e8f080;
+  --chart-1: #10b981;
+  --chart-2: #3b82f6;
+  --chart-3: #f59e0b;
+  --chart-4: #8b5cf6;
+  --chart-5: #ec4899;
+  --pool-auto: #f59e0b;
+  --pool-first: #8b5cf6;
+  --pool-api: #06b6d4;
+  --swatch-1: #f8fafc;
   --swatch-2: #ffffff;
-  --swatch-3: #047857;
+  --swatch-3: #10b981;
   --swatch-4: #475569;
 }
 
 .dark,
 .dark[data-palette='default'] {
-  --bg: #020617;
-  --bg-elevated: rgb(15 23 42 / 0.92);
-  --surface: #0f172a;
-  --surface-2: #1e293b;
-  --border: rgb(148 163 184 / 0.22);
-  --border-subtle: rgb(148 163 184 / 0.12);
-  --shadow: none;
-  --fg: #f8fafc;
-  --fg-muted: #94a3b8;
-  --fg-faint: #64748b;
+  --bg: #090d16;
+  --bg-elevated: #111827;
+  --surface: #111827;
+  --surface-2: #1f2937;
+  --border: rgb(255 255 255 / 0.08);
+  --border-subtle: rgb(255 255 255 / 0.04);
+  --shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
+  --fg: #f9fafb;
+  --fg-muted: #9ca3af;
+  --fg-faint: #6b7280;
   --accent: #34d399;
-  --accent-fg: #022c22;
+  --accent-fg: #064e3b;
   --accent-muted: #6ee7b7;
-  --accent-soft: rgb(52 211 153 / 0.18);
+  --accent-soft: rgb(52 211 153 / 0.15);
   --danger: #f87171;
-  --danger-soft: rgb(69 10 10 / 0.3);
-  --danger-border: rgb(127 29 29 / 0.5);
+  --danger-soft: rgb(127 29 29 / 0.25);
+  --danger-border: rgb(153 27 27 / 0.4);
   --warning: #fbbf24;
-  --warning-soft: rgb(69 26 3 / 0.25);
-  --warning-border: rgb(120 53 15 / 0.4);
+  --warning-soft: rgb(120 53 15 / 0.25);
+  --warning-border: rgb(146 64 14 / 0.4);
   --success: #34d399;
-  --info: #38bdf8;
-  --violet: #c4b5fd;
-  --chart-grid: #334155;
-  --chart-tick: #94a3b8;
-  --chart-cursor: #33415555;
+  --info: #60a5fa;
+  --violet: #a78bfa;
+  --chart-grid: #1f2937;
+  --chart-tick: #9ca3af;
+  --chart-cursor: #37415180;
   --chart-1: #34d399;
   --chart-2: #60a5fa;
-  --chart-3: #4ade80;
-  --chart-4: #fb923c;
-  --chart-5: #c4b5fd;
+  --chart-3: #fbbf24;
+  --chart-4: #a78bfa;
+  --chart-5: #f472b6;
   --pool-auto: #fbbf24;
-  --pool-first: #c4b5fd;
+  --pool-first: #a78bfa;
   --pool-api: #22d3ee;
-  --swatch-1: #020617;
-  --swatch-2: #0f172a;
+  --swatch-1: #090d16;
+  --swatch-2: #111827;
   --swatch-3: #34d399;
-  --swatch-4: #94a3b8;
+  --swatch-4: #9ca3af;
 }
 
 /* ── Nord：Polar Night / Snow Storm ── */
@@ -524,17 +532,18 @@ body {
   }
 
   .tab-rail {
-    @apply relative flex gap-0 border border-line overflow-x-auto;
+    @apply relative flex gap-1 p-1 border border-line overflow-x-auto;
     border-radius: var(--radius-md);
     background: var(--surface-2);
   }
 
   .tab-rail-indicator {
     position: absolute;
-    top: 0;
-    bottom: 0;
+    top: 4px;
+    bottom: 4px;
+    border-radius: var(--radius-sm);
     background: var(--surface);
-    box-shadow: inset 0 -2px 0 0 var(--accent);
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
     transition:
       left 160ms var(--ease-out),
       width 160ms var(--ease-out);
@@ -543,8 +552,8 @@ body {
   }
 
   .tab-rail-btn {
-    @apply ui-press relative z-[1] flex-1 px-3 py-1.5 text-xs font-medium whitespace-nowrap;
-    border-radius: 0;
+    @apply ui-press relative z-[1] flex-1 px-4 py-2 text-xs font-semibold whitespace-nowrap transition-colors;
+    border-radius: var(--radius-sm);
   }
 
   .section-label {
