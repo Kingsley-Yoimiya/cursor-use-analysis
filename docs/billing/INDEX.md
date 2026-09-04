@@ -8,3 +8,4 @@
 - [Model: Cursor Composer 2](https://cursor.com/docs/models/cursor-composer-2) → `model-cursor-composer-2.md` (ok)
 - [Model: Cursor Composer 2.5](https://cursor.com/docs/models/cursor-composer-2-5) → `model-cursor-composer-2-5.md` (ok)
 - [Model: Grok 4.5](https://cursor.com/docs/models/grok-4-5) → `model-grok-4-5.md` (ok)
+- [Model: Grok 4.6](https://cursor.com/docs/models/grok-4-6) → `model-grok-4-6.md` (ok)

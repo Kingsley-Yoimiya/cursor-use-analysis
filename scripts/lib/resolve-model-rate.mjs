@@ -7,7 +7,7 @@
  * 3. 剥企业代理后缀（joybuilder / oxygen）
  * 4. Claude 语序与版本点/横杠变体（claude-haiku-4-5 ↔ claude-4.5-haiku 等）
  * 5. 短名（sonnet-5 → claude-sonnet-5）
- * 6. 把 `*-{effort}-fast` / `*-fast-{effort}` 收成 `*-fast`
+ * 6. 把 `*-{effort}-fast` / `*-fast-{effort}` 收成 `*-fast`（含去 cursor-/new- 前缀后的名字）
  * 7. 逐段剥掉 effort / thinking / preview（绝不把 fast 剥成非 fast，以免低估）
  */
 
@@ -114,6 +114,26 @@ function pushClaudeVariants(key, push) {
 }
 
 /**
+ * 收拢 Fast + effort 语序，并去掉 cursor-/new- 前缀。
+ * 否则 `cursor-grok-4.6-high-fast` 只会得到 `cursor-grok-4.6-fast`，
+ * 撞不上 `models["grok-4.6-fast"]`。
+ * @param {string} key
+ * @param {(k: string) => void} push
+ */
+function foldFastEffort(key, push) {
+  const emit = (folded) => {
+    push(folded);
+    for (const prefix of ['cursor-', 'new-']) {
+      if (folded.startsWith(prefix)) push(folded.slice(prefix.length));
+    }
+  };
+  let m = key.match(/^(.*)-(high|medium|low|xhigh|max|ultra)-fast$/);
+  if (m) emit(`${m[1]}-fast`);
+  m = key.match(/^(.*)-fast-(high|medium|low|xhigh|max|ultra)$/);
+  if (m) emit(`${m[1]}-fast`);
+}
+
+/**
  * @param {string} key
  * @returns {string[]}
  */
@@ -146,15 +166,11 @@ function expandCandidates(key) {
   pushClaudeVariants(key, push);
   if (base !== key) pushClaudeVariants(base, push);
 
-  // effort 在 fast 前：grok-4.5-high-fast → grok-4.5-fast
-  let m = key.match(
-    /^(.*)-(high|medium|low|xhigh|max|ultra)-fast$/,
-  );
-  if (m) push(`${m[1]}-fast`);
-
-  // fast 在 effort 前：grok-4.5-fast-high → grok-4.5-fast
-  m = key.match(/^(.*)-fast-(high|medium|low|xhigh|max|ultra)$/);
-  if (m) push(`${m[1]}-fast`);
+  foldFastEffort(key, push);
+  if (base !== key) foldFastEffort(base, push);
+  for (const prefix of ['cursor-', 'new-']) {
+    if (key.startsWith(prefix)) foldFastEffort(key.slice(prefix.length), push);
+  }
 
   // 逐段剥 effort / thinking / preview（保留 -fast）
   let cur = key;
@@ -172,10 +188,7 @@ function expandCandidates(key) {
       if (cur.endsWith(suf)) push(cur.slice(0, -suf.length));
     }
     pushClaudeVariants(cur, push);
-    const fm = cur.match(
-      /^(.*)-(high|medium|low|xhigh|max|ultra)-fast$/,
-    );
-    if (fm) push(`${fm[1]}-fast`);
+    foldFastEffort(cur, push);
   }
 
   return out;
@@ -211,9 +224,11 @@ export function classifyPool(kind, resolvedKey, rate) {
   if (kind === 'auto') return 'Auto';
   if (rate?.billingPool === 'firstParty') return 'FirstParty';
   // 兼容未标 billingPool 的旧配置
+  const rk = String(resolvedKey || '');
   if (
-    String(resolvedKey || '').includes('composer') ||
-    String(resolvedKey || '').startsWith('grok-4.5')
+    rk.includes('composer') ||
+    rk.startsWith('grok-4.5') ||
+    rk.startsWith('grok-4.6')
   ) {
     return 'FirstParty';
   }

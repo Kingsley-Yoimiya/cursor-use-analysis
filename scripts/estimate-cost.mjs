@@ -72,7 +72,7 @@ function usage() {
   console.log(`用法:
   node scripts/estimate-cost.mjs --in <usage.csv> [--out report.json] [--rates config/model-rates.json] [--teams]
 
-  --teams   按 Teams 规则粗略加上 Cursor Token Rate（$0.25/M）；Auto 与 First-party（Composer / Grok 4.5）豁免。
+  --teams   按 Teams 规则粗略加上 Cursor Token Rate（$0.25/M）；Auto 与 First-party（Composer / Grok 4.5 / 4.6）豁免。
 `);
 }
 
@@ -264,7 +264,7 @@ async function main() {
     ratesFile: ratesPath,
     teamsSurchargeApplied: Boolean(raw.teams),
     disclaimer:
-      'estimatedUsd 为按公开文档单价估算的等价费用，不等同于发票金额；Included 套餐内额度未建模抵扣。Grok 4.5 / Composer 计入 First-party 池，非 API。',
+      'estimatedUsd 为按公开文档单价估算的等价费用，不等同于发票金额；Included 套餐内额度未建模抵扣。Grok 4.5 / 4.6 与 Composer 计入 First-party 池，非 API。',
     totals: {
       rows: rows.length,
       unknownModelRows: unknownModelCount,

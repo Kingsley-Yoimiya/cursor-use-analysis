@@ -292,7 +292,7 @@ def plot_results(days: list[str], complete_count: int, series: dict, fits: dict,
         0.01,
         0.01,
         "变化量 = 当日 token − 前一日 token；正值表示用量增加，负值表示减少。底层数据来自 Cursor 用量事件的模型费率映射："
-        "Composer/Grok 4.5 等归 First-party，其余指定模型归 API；Auto 单独保留，未混入两条线。",
+        "Composer/Grok 4.5/4.6 等归 First-party，其余指定模型归 API；Auto 单独保留，未混入两条线。",
         fontsize=10.5,
     )
     fig.subplots_adjust(bottom=0.18)

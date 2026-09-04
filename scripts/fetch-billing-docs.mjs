@@ -41,13 +41,18 @@ const TARGETS = [
     url: 'https://cursor.com/docs/models/grok-4-5',
     title: 'Model: Grok 4.5',
   },
+  {
+    file: 'model-grok-4-6.md',
+    url: 'https://cursor.com/docs/models/grok-4-6',
+    title: 'Model: Grok 4.6',
+  },
 ];
 
 async function fetchText(url) {
   const res = await fetch(url, {
     headers: {
       'User-Agent': 'cursor-usage-analysis/fetch-billing (local tool)',
-      Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8',
+      Accept: 'text/markdown, text/plain;q=0.9, text/html;q=0.4, */*;q=0.1',
     },
   });
   const ct = res.headers.get('content-type') || '';
