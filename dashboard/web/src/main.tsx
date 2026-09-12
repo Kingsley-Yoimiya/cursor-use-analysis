@@ -2,9 +2,20 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { DataModeProvider } from './context/DataModeContext'
+import { installDataPlane } from './lib/data/install'
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+const rootEl = document.getElementById('root')!
+
+rootEl.innerHTML =
+  '<p style="font-family:ui-sans-serif,system-ui,sans-serif;padding:2rem;color:#64748b">正在准备看板…</p>'
+
+void installDataPlane().then((mode) => {
+  createRoot(rootEl).render(
+    <StrictMode>
+      <DataModeProvider mode={mode}>
+        <App />
+      </DataModeProvider>
+    </StrictMode>,
+  )
+})

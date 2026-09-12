@@ -21,6 +21,7 @@ import {
 } from './components/MergeAddonToggle'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
 import { ProfilesProvider, useProfiles } from './context/ProfilesContext'
+import { useDataMode } from './context/DataModeContext'
 import { ThemePalettePicker } from './components/ThemePalettePicker'
 import { DataSyncBar } from './components/DataSyncBar'
 import { ProfileSwitcher } from './components/ProfileSwitcher'
@@ -89,7 +90,9 @@ interface PluginCursorDailyResponse {
 
 function AppShell() {
   const { isDark, toggleMode, isPaper } = useTheme()
-  const { profilesQuery, selectedKey, selectedIds, profiles } = useProfiles()
+  const { profilesQuery, selectedKey, selectedIds, profiles, refreshProfiles } = useProfiles()
+  const dataMode = useDataMode()
+  const browserMode = dataMode === 'static' || dataMode === 'fixture'
 
   // ── 标签页 ──
   const [activeTab, setActiveTab] = useState<Tab>('overview')
@@ -112,6 +115,7 @@ function AppShell() {
   const bumpRefresh = () => {
     setDailyError(null)
     setRefreshKey((k) => k + 1)
+    void refreshProfiles()
   }
 
   const setMerge = (on: boolean) => {
@@ -364,7 +368,7 @@ function AppShell() {
               </h1>
               {!isPaper && (
                 <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
-                  Live
+                  {browserMode ? (dataMode === 'fixture' ? 'Demo' : 'Browser') : 'Live'}
                 </span>
               )}
             </div>
@@ -619,7 +623,10 @@ function AppShell() {
             {/* 趋势图表区域 */}
             {dailyError ? (
               <div className="rounded-xl border border-danger-border bg-danger-soft p-4 text-sm text-danger">
-                加载每日数据失败：{dailyError}（请确认已启动 dashboard/server）
+                加载每日数据失败：{dailyError}
+                {browserMode
+                  ? '。请导入 cursor.com 导出的 CSV，或打开 ?demo=1 查看演示。'
+                  : '（请确认已启动 dashboard/server）'}
               </div>
             ) : (
               <section className="space-y-6">
@@ -696,7 +703,10 @@ function AppShell() {
             )}
             {dailyError ? (
               <div className="rounded-xl border border-danger-border bg-danger-soft p-4 text-sm text-danger">
-                加载每日数据失败：{dailyError}（请确认已启动 dashboard/server）
+                加载每日数据失败：{dailyError}
+                {browserMode
+                  ? '。请导入 cursor.com 导出的 CSV，或打开 ?demo=1 查看演示。'
+                  : '（请确认已启动 dashboard/server）'}
               </div>
             ) : (
               <ModelDetailedChart daily={filteredDaily} />
@@ -725,6 +735,9 @@ function AppShell() {
         <footer className="border-t border-line/60 pt-6 pb-2">
           <p className="text-center text-[11px] text-fg-faint">
             数据仅供参考 · estimatedUsd 按公开文档单价计算，不等同于实际账单
+            {browserMode
+              ? ' · 静态模式：CSV 只存在这台浏览器，不会上传 Cookie'
+              : ''}
             {pluginTabs.length > 0
               ? ' · 附加数据源与主用量默认分列，合并需显式打开开关'
               : ''}

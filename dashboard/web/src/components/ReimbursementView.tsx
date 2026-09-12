@@ -25,6 +25,7 @@ import {
   exportManyElementsToPng,
   sanitizeFilenamePart,
 } from '../utils/exportCardToPng'
+import { downloadApiCsv } from '../lib/data/importCsv'
 
 // ────────── 类型 ──────────
 
@@ -151,6 +152,14 @@ function buildUsageCsvExportUrl(
   })
   if (periodKey) params.set('periodKey', periodKey)
   return `/api/export/usage-with-cost.csv?${params.toString()}`
+}
+
+function downloadUsageCsv(billingCycleDay: number, periodKey?: string) {
+  const url = buildUsageCsvExportUrl(billingCycleDay, periodKey)
+  const name = periodKey
+    ? `cursor-usage-with-cost-${periodKey}.csv`
+    : 'cursor-usage-with-cost.csv'
+  return downloadApiCsv(url, name)
 }
 
 // ────────── 单月报销卡片（固定浅色，便于截图） ──────────
@@ -672,13 +681,13 @@ export function ReimbursementView({
             {savingProfile ? '保存中…' : '保存报销人信息'}
           </button>
 
-          <a
-            href={buildUsageCsvExportUrl(billingCycleDay)}
-            download
+          <button
+            type="button"
+            onClick={() => void downloadUsageCsv(billingCycleDay)}
             className="px-3 py-2 text-xs font-medium rounded-lg border border-line bg-surface-2 hover:bg-surface text-fg"
           >
             下载全部原始 CSV（含费用）
-          </a>
+          </button>
 
           <button
             type="button"
@@ -738,13 +747,15 @@ export function ReimbursementView({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right space-x-2 whitespace-nowrap">
-                      <a
-                        href={buildUsageCsvExportUrl(billingCycleDay, p.key)}
-                        download
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void downloadUsageCsv(billingCycleDay, p.key)
+                        }
                         className="text-xs text-info hover:underline"
                       >
                         CSV
-                      </a>
+                      </button>
                       <button
                         type="button"
                         onClick={() => exportOne(p.key)}

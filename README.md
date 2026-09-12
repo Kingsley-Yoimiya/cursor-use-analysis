@@ -33,7 +33,9 @@ npm run estimate-cost
 chmod +x ./dashboard/start-dev.sh
 ./dashboard/start-dev.sh
 ```
-*(访问 [http://localhost:5173](http://localhost:5173) 即可打开炫酷的本地分析面板！)*
+*(访问 [http://localhost:5173](http://localhost:5173) 即可打开本地分析面板。)*
+
+静态部署（Vercel，无需本机 Express / Cookie）见 [docs/plans/vercel-static-dashboard.md](./docs/plans/vercel-static-dashboard.md)：导入官网 CSV，或打开 `/?demo=1` 看演示数据。Cloud Agent 请用演示模式，不要提交 `data/auth.json`。
 
 ---
 
@@ -200,6 +202,7 @@ python3 scripts/analysis/analyze_usage_portrait.py
 - **快速启动**：运行 `./dashboard/start-dev.sh`，访问 `http://localhost:5173`。
   - **功能特色**：支持明暗主题切换、自定义日期筛选、每日用量趋势图、按 API/First-party/Auto 池子划分的堆叠图、全模型排行榜与 Cache Hit Rate。
 - 更多详情请查看 [Dashboard README](./dashboard/README.md)。
+- **Vercel 静态站**：导入官网 CSV 或 `/?demo=1`；不要上传 Cookie。计划见 [docs/plans/vercel-static-dashboard.md](./docs/plans/vercel-static-dashboard.md)。
 
 - 以 CSV 或 `reports/estimate.json` 的 **`byModel` / 按日期聚合** 驱动图表（趋势、堆叠、Max Mode 对比）。
 - **Cache read** 占比高通常表示命中提示缓存，单价更低，适合在图例中与 input/output 区分。

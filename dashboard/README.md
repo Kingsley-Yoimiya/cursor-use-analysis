@@ -37,6 +37,15 @@ dashboard/
 
 数据路径见 `config/profiles.json`（可参考 `config/profiles.example.json`）。报销 Tab 固定使用 `default` 主账号，避免多人费用混开。
 
+## 静态部署（Vercel）
+
+不把 Cookie 和 Express 搬上云。把 GitHub 仓库接到 [Vercel](https://vercel.com)，根目录构建会产出 `dashboard/web/dist`。打开站点后：
+
+1. 在 cursor.com 控制台导出用量 CSV（`strategy=tokens`），点 **导入 CSV**
+2. 或访问 `/?demo=1` 看脱敏演示（Cloud Agent 调试用这条）
+
+数据只存在访客自己的浏览器（IndexedDB），不会进 Git。本机 `./dashboard/start-dev.sh` 仍走 Express 一键同步。
+
 ## 如何使用
 
 确保你已经在根目录执行了导出数据脚本，并生成了 `exports/usage.csv` 和 `reports/estimate.json`（或根据年份对应的文件，默认脚本会读取这些路径）。

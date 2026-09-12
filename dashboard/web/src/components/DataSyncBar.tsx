@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import axios from 'axios'
+import { importUsageCsvFile } from '../lib/data/importCsv'
+import { useDataMode } from '../context/DataModeContext'
 import type { SyncPulse } from '../lib/syncPulse'
 
 interface FileMeta {
@@ -59,6 +61,7 @@ interface ServerCaps {
   reload: boolean
   sync: boolean
   refresh: boolean
+  csvImport: boolean
 }
 
 function formatRelativeTime(iso?: string) {
@@ -93,6 +96,7 @@ async function readServerCaps(): Promise<ServerCaps | null> {
       reload: f.includes('reload'),
       sync: f.includes('sync'),
       refresh: f.includes('refresh'),
+      csvImport: f.includes('csv-import'),
     }
   } catch {
     return null
@@ -124,11 +128,15 @@ export function DataSyncBar({
   onSyncSuccess?: (pulse: SyncPulse) => void
   primaryOnly?: boolean
 }) {
+  const dataMode = useDataMode()
+  const fileRef = useRef<HTMLInputElement>(null)
   const [status, setStatus] = useState<DataStatus | null>(null)
   const [caps, setCaps] = useState<ServerCaps | null>(null)
   const [reloading, setReloading] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [inlineErr, setInlineErr] = useState<string | null>(null)
+  const browserMode = dataMode === 'static' || dataMode === 'fixture'
 
   const fetchStatus = useCallback(async () => {
     const nextCaps = await readServerCaps()
@@ -208,19 +216,69 @@ export function DataSyncBar({
         )
       }
       await fetchStatus()
-    } finally {
+    }     finally {
       setSyncing(false)
+    }
+  }
+
+  const handleImportFile = async (file: File | undefined) => {
+    if (!file) return
+    setImporting(true)
+    setInlineErr(null)
+    try {
+      const r = await importUsageCsvFile(file, 'default', '导入')
+      if (!r.data.ok) {
+        setInlineErr(r.data.error || '导入失败')
+        return
+      }
+      await fetchStatus()
+      onReload()
+    } catch (e) {
+      setInlineErr('导入失败：' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setImporting(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  const loadDemoIntoBrowser = async () => {
+    setImporting(true)
+    setInlineErr(null)
+    try {
+      const r = await fetch('/fixtures/usage.sample.csv')
+      if (!r.ok) throw new Error('找不到演示 CSV')
+      const csvText = await r.text()
+      const file = new File([csvText], 'usage.sample.csv', { type: 'text/csv' })
+      const imported = await importUsageCsvFile(file, 'demo', '演示数据')
+      if (!imported.data.ok) {
+        setInlineErr(imported.data.error || '加载演示失败')
+        return
+      }
+      await fetchStatus()
+      onReload()
+    } catch (e) {
+      setInlineErr('加载演示失败：' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setImporting(false)
     }
   }
 
   const csv = status?.files?.usageCsv
   const auth = status?.files?.authJson
   const session = status?.session
-  const busy = reloading || syncing
+  const busy = reloading || syncing || importing
   const legacyServer = caps != null && !caps.dataStatus
+  const canImport = Boolean(caps?.csvImport) || browserMode
 
   const statusLine = (() => {
     if (legacyServer) return '后端需重启以显示文件状态'
+    if (browserMode) {
+      if (dataMode === 'fixture') return '演示数据（不含你的账号 Cookie）'
+      if (!csv?.exists) return '浏览器本地 · 导入 CSV 或加载演示'
+      const rel = formatRelativeTime(csv.mtimeIso)
+      const size = formatBytes(csv.sizeBytes)
+      return `已导入 ${rel ?? ''}${size ? ` · ${size}` : ''}`.trim()
+    }
     if (!caps) return '未连接后端'
     if (!csv?.exists) return '尚无本地 CSV（可先同步或 npm run export）'
     const rel = formatRelativeTime(csv.mtimeIso)
@@ -258,23 +316,58 @@ export function DataSyncBar({
           </button>
         )}
 
-        <button
-          type="button"
-          onClick={handleSync}
-          disabled={syncDisabled}
-          className="btn-primary"
-          title={
-            !caps?.sync && !caps?.refresh
-              ? '请重启 dashboard/server'
-              : caps?.dataStatus && !auth?.exists
-                ? '需先 npm run login'
-                : caps?.dataStatus && session?.expired
-                  ? '登录已过期，请重新 login'
-                  : '从 Cursor 拉取 CSV 并重算（需代理）'
-          }
-        >
-          {syncing ? '同步中…' : primaryOnly ? '同步' : '从 Cursor 同步'}
-        </button>
+        {canImport && (
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(e) => void handleImportFile(e.target.files?.[0])}
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={busy}
+              className={browserMode ? 'btn-primary' : 'btn-ghost'}
+              title="导入 cursor.com 控制台导出的用量 CSV（strategy=tokens）"
+            >
+              {importing ? '导入中…' : '导入 CSV'}
+            </button>
+          </>
+        )}
+
+        {browserMode && dataMode !== 'fixture' && !csv?.exists && (
+          <button
+            type="button"
+            onClick={() => void loadDemoIntoBrowser()}
+            disabled={busy}
+            className="btn-ghost"
+            title="加载脱敏演示数据，无需登录"
+          >
+            加载演示
+          </button>
+        )}
+
+        {!browserMode && (
+          <button
+            type="button"
+            onClick={handleSync}
+            disabled={syncDisabled}
+            className="btn-primary"
+            title={
+              !caps?.sync && !caps?.refresh
+                ? '请重启 dashboard/server'
+                : caps?.dataStatus && !auth?.exists
+                  ? '需先 npm run login'
+                  : caps?.dataStatus && session?.expired
+                    ? '登录已过期，请重新 login'
+                    : '从 Cursor 拉取 CSV 并重算（需代理）'
+            }
+          >
+            {syncing ? '同步中…' : primaryOnly ? '同步' : '从 Cursor 同步'}
+          </button>
+        )}
       </div>
       {inlineErr && (
         <p

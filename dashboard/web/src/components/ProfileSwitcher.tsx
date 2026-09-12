@@ -4,6 +4,8 @@
 import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
 import { useProfiles, type ProfileInfo } from '../context/ProfilesContext'
+import { useDataMode } from '../context/DataModeContext'
+import { importUsageCsvFile } from '../lib/data/importCsv'
 
 function formatRelativeTime(iso?: string | null) {
   if (!iso) return null
@@ -18,7 +20,14 @@ function formatRelativeTime(iso?: string | null) {
   return `${Math.floor(hr / 24)} 天前`
 }
 
-function statusLabel(p: ProfileInfo) {
+function statusLabel(p: ProfileInfo, browserMode: boolean) {
+  if (browserMode) {
+    if (!p.hasData) return { text: '无数据', tone: 'muted' as const }
+    return {
+      text: p.identitySource === 'fixture' ? '演示' : '已导入',
+      tone: 'ok' as const,
+    }
+  }
   if (!p.files?.authJson?.exists) return { text: '未登录', tone: 'warn' as const }
   if (p.session?.expired) return { text: '会话过期', tone: 'warn' as const }
   if (!p.hasData) return { text: '无数据', tone: 'muted' as const }
@@ -38,6 +47,10 @@ export function ProfileSwitcher({
     loading,
     error,
   } = useProfiles()
+  const dataMode = useDataMode()
+  const browserMode = dataMode === 'static' || dataMode === 'fixture'
+  const importRef = useRef<HTMLInputElement>(null)
+  const [importTarget, setImportTarget] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [newId, setNewId] = useState('')
@@ -94,6 +107,10 @@ export function ProfileSwitcher({
       setNewId('')
       setNewLabel('')
       await refreshProfiles()
+      if (browserMode) {
+        setBanner('已添加。点该身份的「导入 CSV」。')
+        return
+      }
       const hint = r.data.profile?.loginHint?.login
       if (hint) {
         setBanner(`已添加。请在项目根目录执行：\n${hint}`)
@@ -101,6 +118,34 @@ export function ProfileSwitcher({
       }
     } catch (e) {
       setAddError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const handleImportPick = (id: string) => {
+    setImportTarget(id)
+    importRef.current?.click()
+  }
+
+  const handleImportChange = async (file: File | undefined) => {
+    const id = importTarget
+    setImportTarget(null)
+    if (!file || !id) return
+    setSyncingId(id)
+    setBanner(null)
+    try {
+      const r = await importUsageCsvFile(file, id)
+      if (!r.data.ok) {
+        setBanner(r.data.error || '导入失败')
+      } else {
+        setBanner(`已导入 ${r.data.rows ?? ''} 行`)
+        await refreshProfiles()
+        onSynced?.()
+      }
+    } catch (e) {
+      setBanner(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSyncingId(null)
+      if (importRef.current) importRef.current.value = ''
     }
   }
 
@@ -162,17 +207,21 @@ export function ProfileSwitcher({
             <div>
               <div className="text-xs font-semibold text-fg">身份汇总</div>
               <div className="text-[11px] text-fg-muted mt-0.5">
-                勾选后计入概览 / 模型 / 节奏 / 周期统计。报销仍用主数据源。
+                {browserMode
+                  ? '勾选后计入概览。每个身份对应一份导入的 CSV，数据只存在这台浏览器。'
+                  : '勾选后计入概览 / 模型 / 节奏 / 周期统计。报销仍用主数据源。'}
               </div>
             </div>
-            <button
-              type="button"
-              className="text-[11px] text-accent shrink-0"
-              onClick={() => void refreshProfiles({ refreshEmail: true })}
-              disabled={loading}
-            >
-              刷新邮箱
-            </button>
+            {!browserMode && (
+              <button
+                type="button"
+                className="text-[11px] text-accent shrink-0"
+                onClick={() => void refreshProfiles({ refreshEmail: true })}
+                disabled={loading}
+              >
+                刷新邮箱
+              </button>
+            )}
           </div>
 
           {error && (
@@ -183,7 +232,7 @@ export function ProfileSwitcher({
 
           <ul className="space-y-2 max-h-64 overflow-auto">
             {profiles.map((p) => {
-              const st = statusLabel(p)
+              const st = statusLabel(p, browserMode)
               const checked = selectedIds.includes(p.id)
               const syncAgo = formatRelativeTime(
                 p.lastSync?.lastSuccessAt || p.lastSync?.updatedAt,
@@ -220,7 +269,9 @@ export function ProfileSwitcher({
                         </span>
                         {syncAgo && <span>同步 {syncAgo}</span>}
                       </div>
-                      {!p.files?.authJson?.exists && p.loginHint?.login && (
+                      {!browserMode &&
+                        !p.files?.authJson?.exists &&
+                        p.loginHint?.login && (
                         <button
                           type="button"
                           className="mt-1 text-[10px] text-accent text-left"
@@ -234,19 +285,30 @@ export function ProfileSwitcher({
                         </button>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      disabled={syncingId != null || !p.files?.authJson?.exists}
-                      onClick={() => void handleSync(p.id)}
-                      className="shrink-0 text-[11px] px-2 py-1 rounded border border-line hover:bg-surface disabled:opacity-40"
-                      title={
-                        p.files?.authJson?.exists
-                          ? '导出并计价该身份'
-                          : '请先 login'
-                      }
-                    >
-                      {syncingId === p.id ? '同步中…' : '同步'}
-                    </button>
+                    {browserMode ? (
+                      <button
+                        type="button"
+                        disabled={syncingId != null}
+                        onClick={() => handleImportPick(p.id)}
+                        className="shrink-0 text-[11px] px-2 py-1 rounded border border-line hover:bg-surface disabled:opacity-40"
+                      >
+                        {syncingId === p.id ? '导入中…' : '导入 CSV'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={syncingId != null || !p.files?.authJson?.exists}
+                        onClick={() => void handleSync(p.id)}
+                        className="shrink-0 text-[11px] px-2 py-1 rounded border border-line hover:bg-surface disabled:opacity-40"
+                        title={
+                          p.files?.authJson?.exists
+                            ? '导出并计价该身份'
+                            : '请先 login'
+                        }
+                      >
+                        {syncingId === p.id ? '同步中…' : '同步'}
+                      </button>
+                    )}
                   </div>
                 </li>
               )
@@ -270,7 +332,9 @@ export function ProfileSwitcher({
           ) : (
             <div className="space-y-2 border-t border-line pt-2">
               <div className="text-[11px] text-fg-muted">
-                添加后在终端对该身份执行 login（需浏览器过 Cloudflare）。
+                {browserMode
+                  ? '添加后为该身份导入一份 CSV。'
+                  : '添加后在终端对该身份执行 login（需浏览器过 Cloudflare）。'}
               </div>
               <input
                 className="w-full rounded border border-line bg-canvas px-2 py-1.5 text-xs"
@@ -303,12 +367,21 @@ export function ProfileSwitcher({
                   className="text-xs px-2 py-1 rounded bg-accent text-white"
                   onClick={() => void handleAdd()}
                 >
-                  创建并复制 login
+                  {browserMode ? '创建身份' : '创建并复制 login'}
                 </button>
               </div>
             </div>
           )}
         </div>
+      )}
+      {browserMode && (
+        <input
+          ref={importRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={(e) => void handleImportChange(e.target.files?.[0])}
+        />
       )}
     </div>
   )
