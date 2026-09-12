@@ -11,8 +11,6 @@
 import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { request } from 'playwright';
-import { createInterface } from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
 import { mkdir, writeFile, access } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 
@@ -64,7 +62,7 @@ export 选项:
   --headed              仅用浏览器下载（API 请求失败时可试）
   --chrome              与 --headed 一起用时，启动本机 Google Chrome
 
-login 选项（减轻 Cloudflare 误判；人机仍需你在窗口里手动完成）:
+login 选项（减轻 Cloudflare 误判；人机仍需你在窗口里手动完成，检测到有效会话后自动保存）:
   --chrome              使用本机已安装的 Google Chrome（比自带 Chromium 更不容易触发校验）
   --profile <目录>      持久化浏览器数据目录，默认 ./data/browser-profile（可复用 cf_clearance）
   --from-cdp <url>      连接已用远程调试启动的 Chrome，例如 http://127.0.0.1:9222
@@ -169,13 +167,58 @@ function buildExportUrl(startMs, endMs, strategy) {
   return u.toString();
 }
 
-async function waitForEnter(message) {
-  const rl = createInterface({ input, output });
+function parseWorkosJwtExpMs(cookieValue) {
   try {
-    await rl.question(message);
-  } finally {
-    rl.close();
+    const jwtPart = decodeURIComponent(String(cookieValue)).split('::').pop();
+    if (!jwtPart) return null;
+    const payload = JSON.parse(
+      Buffer.from(jwtPart.split('.')[1], 'base64url').toString('utf8'),
+    );
+    return payload.exp ? payload.exp * 1000 : null;
+  } catch {
+    return null;
   }
+}
+
+async function readCursorSession(context) {
+  const cookies = await context.cookies(`${BASE}/`);
+  const token = cookies.find((c) => c.name === 'WorkosCursorSessionToken');
+  if (!token?.value) {
+    return { loggedIn: false, expIso: null, expired: null };
+  }
+  const expMs = parseWorkosJwtExpMs(token.value);
+  if (expMs == null) {
+    return { loggedIn: true, expIso: null, expired: null };
+  }
+  const expired = Date.now() > expMs;
+  return {
+    loggedIn: !expired,
+    expIso: new Date(expMs).toISOString(),
+    expired,
+  };
+}
+
+async function waitUntilCursorSession(context, page, { timeoutMs = 10 * 60_000 } = {}) {
+  const started = Date.now();
+  let lastNote = '';
+  while (Date.now() - started < timeoutMs) {
+    const session = await readCursorSession(context);
+    const url = page?.url?.() || '';
+    const note = session.loggedIn
+      ? `已检测到有效会话（exp ${session.expIso}）`
+      : session.expired
+        ? '当前会话已过期，请重新登录'
+        : '尚未检测到登录 Cookie';
+    if (note !== lastNote) {
+      console.log(`[login] ${note}${url ? ` | ${url}` : ''}`);
+      lastNote = note;
+    }
+    if (session.loggedIn && !/challenges\.cloudflare|\/login/i.test(url)) {
+      return session;
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw new Error('等待登录超时（10 分钟）。请在窗口内完成登录后重跑 npm run login -- --chrome');
 }
 
 async function cmdLogin(authPath, parsed) {
@@ -184,7 +227,7 @@ async function cmdLogin(authPath, parsed) {
   if (parsed.fromCdp) {
     console.log('连接到已有 Chrome 调试端口:', parsed.fromCdp);
     console.log(
-      '请在该浏览器实例中打开 cursor.com，完成 Cloudflare 与登录后再继续。\n',
+      '请在该浏览器实例中打开 cursor.com，完成 Cloudflare 与登录。检测到有效会话后会自动保存。\n',
     );
     const browser = await chromium.connectOverCDP(parsed.fromCdp);
     try {
@@ -193,7 +236,8 @@ async function cmdLogin(authPath, parsed) {
       if (!ctx) {
         throw new Error('未找到浏览器上下文，请保留至少一个 Chrome 窗口');
       }
-      await waitForEnter('确认已登录 cursor 控制台 → 按 Enter 写入会话文件… ');
+      const page = ctx.pages()[0] || (await ctx.newPage());
+      await waitUntilCursorSession(ctx, page);
       await ctx.storageState({ path: authPath });
     } finally {
       await browser.close();
@@ -209,6 +253,7 @@ async function cmdLogin(authPath, parsed) {
   console.log(
     '已启用 stealth 插件；Cloudflare 仍须你在窗口内手动完成（无法也不应全自动绕过）。',
   );
+  console.log('检测到未过期的 WorkosCursorSessionToken 后会自动保存，无需按 Enter。');
   if (parsed.chrome) {
     console.log('当前使用本机 Google Chrome。\n');
   } else {
@@ -233,7 +278,7 @@ async function cmdLogin(authPath, parsed) {
       waitUntil: 'domcontentloaded',
       timeout: 180_000,
     });
-    await waitForEnter('确认已在浏览器中登录完成 → 按 Enter 保存会话… ');
+    await waitUntilCursorSession(context, page);
     await context.storageState({ path: authPath });
   } finally {
     await context.close();
