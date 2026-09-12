@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { Analytics } from '@vercel/analytics/react'
 import './index.css'
 import App from './App.tsx'
 import { DataModeProvider } from './context/DataModeContext'
@@ -15,6 +16,7 @@ void installDataPlane().then((mode) => {
     <StrictMode>
       <DataModeProvider mode={mode}>
         <App />
+        <Analytics />
       </DataModeProvider>
     </StrictMode>,
   )

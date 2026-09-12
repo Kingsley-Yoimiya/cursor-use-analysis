@@ -46,6 +46,8 @@ dashboard/
 
 数据只存在访客自己的浏览器（IndexedDB），不会进 Git。本机 `./dashboard/start-dev.sh` 仍走 Express 一键同步。
 
+访问量看 Vercel 项目侧栏 **Analytics**（Web Analytics）。前端已接入 `@vercel/analytics`；第一次用需在该页点 **Enable**，再部署一次后才会记 pageview。本机 `npm run dev` 默认不打点。
+
 ## 如何使用
 
 确保你已经在根目录执行了导出数据脚本，并生成了 `exports/usage.csv` 和 `reports/estimate.json`（或根据年份对应的文件，默认脚本会读取这些路径）。

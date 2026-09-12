@@ -40,7 +40,7 @@
 
 ## Vercel
 
-只构建 `dashboard/web`。无 Serverless、无 Playwright、无环境变量 Cookie。
+只构建 `dashboard/web`。无 Serverless、无 Playwright、无环境变量 Cookie。访问记录用 Vercel Web Analytics（`@vercel/analytics`，根组件挂 `<Analytics />`）。
 
 ## 明确不做
 
