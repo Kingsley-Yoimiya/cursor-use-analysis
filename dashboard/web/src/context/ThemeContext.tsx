@@ -9,7 +9,7 @@ import {
 } from 'react'
 
 export type ThemeMode = 'light' | 'dark'
-export type ThemePalette = 'default' | 'nord' | 'catppuccin' | 'matcha'
+export type ThemePalette = 'default' | 'nord' | 'catppuccin' | 'matcha' | 'paper'
 
 export const PALETTE_OPTIONS: {
   id: ThemePalette
@@ -20,6 +20,7 @@ export const PALETTE_OPTIONS: {
   { id: 'nord', label: 'Nord', hint: '北极蓝灰' },
   { id: 'catppuccin', label: 'Catppuccin', hint: 'Latte / Mocha' },
   { id: 'matcha', label: '抹茶', hint: 'Matcha' },
+  { id: 'paper', label: '论文', hint: '白底大字 · 学术图' },
 ]
 
 const STORAGE_KEY = 'cursor-dashboard-theme-v2'
@@ -34,6 +35,7 @@ interface ThemeContextValue {
   mode: ThemeMode
   palette: ThemePalette
   isDark: boolean
+  isPaper: boolean
   setMode: (mode: ThemeMode) => void
   setPalette: (palette: ThemePalette) => void
   toggleMode: () => void
@@ -43,7 +45,11 @@ const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 function isPalette(v: unknown): v is ThemePalette {
   return (
-    v === 'default' || v === 'nord' || v === 'catppuccin' || v === 'matcha'
+    v === 'default' ||
+    v === 'nord' ||
+    v === 'catppuccin' ||
+    v === 'matcha' ||
+    v === 'paper'
   )
 }
 
@@ -72,7 +78,8 @@ function readStored(): StoredTheme {
 
 function applyDom(mode: ThemeMode, palette: ThemePalette) {
   const root = document.documentElement
-  root.classList.toggle('dark', mode === 'dark')
+  const effectiveMode = palette === 'paper' ? 'light' : mode
+  root.classList.toggle('dark', effectiveMode === 'dark')
   root.dataset.palette = palette
 }
 
@@ -89,25 +96,42 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [stored])
 
   const setMode = useCallback((mode: ThemeMode) => {
-    setStored((s) => ({ ...s, mode }))
+    setStored((s) => {
+      const next = { ...s, mode }
+      applyDom(next.mode, next.palette)
+      return next
+    })
   }, [])
 
   const setPalette = useCallback((palette: ThemePalette) => {
-    setStored((s) => ({ ...s, palette }))
+    setStored((s) => {
+      const next = {
+        ...s,
+        palette,
+        mode: palette === 'paper' ? ('light' as const) : s.mode,
+      }
+      applyDom(next.mode, next.palette)
+      return next
+    })
   }, [])
 
   const toggleMode = useCallback(() => {
-    setStored((s) => ({
-      ...s,
-      mode: s.mode === 'dark' ? 'light' : 'dark',
-    }))
+    setStored((s) => {
+      const next = {
+        ...s,
+        mode: (s.mode === 'dark' ? 'light' : 'dark') as ThemeMode,
+      }
+      applyDom(next.mode, next.palette)
+      return next
+    })
   }, [])
 
   const value = useMemo<ThemeContextValue>(
     () => ({
       mode: stored.mode,
       palette: stored.palette,
-      isDark: stored.mode === 'dark',
+      isDark: stored.palette === 'paper' ? false : stored.mode === 'dark',
+      isPaper: stored.palette === 'paper',
       setMode,
       setPalette,
       toggleMode,
@@ -139,8 +163,10 @@ export function useChartColors() {
     const style = getComputedStyle(document.documentElement)
     const get = (name: string, fallback: string) =>
       style.getPropertyValue(name).trim() || fallback
+    const paper = palette === 'paper'
     return {
-      grid: get('--chart-grid', '#e2e8f0'),
+      paper,
+      grid: paper ? '#808080' : get('--chart-grid', '#e2e8f0'),
       tick: get('--chart-tick', '#94a3b8'),
       cursor: get('--chart-cursor', '#e2e8f055'),
       chart1: get('--chart-1', '#10b981'),

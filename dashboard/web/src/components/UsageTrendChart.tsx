@@ -82,6 +82,7 @@ export function UsageTrendChart({ daily }: UsageTrendChartProps) {
   const chartColors = useChartColors()
   const accentColor = chartColors.chart1
   const tick = chartTickStyle(chartColors.tick)
+  const paper = chartColors.paper
 
   if (!daily) {
     return <div className="h-64 animate-pulse panel bg-surface-2" />
@@ -96,8 +97,8 @@ export function UsageTrendChart({ daily }: UsageTrendChartProps) {
   const chartHeight = showBrush ? 288 : 248
 
   return (
-    <ChartPanel title="每日 API 等效价值（USD）">
-      {showBrush && (
+    <ChartPanel title="每日公开单价等效价值（USD）" band="warm">
+      {showBrush && !paper && (
         <p className="mb-2 text-[11px] text-fg-muted">
           拖动底部滑块缩放 / 平移时间窗口（与下方图表同步）
         </p>
@@ -108,25 +109,27 @@ export function UsageTrendChart({ daily }: UsageTrendChartProps) {
           syncId={OVERVIEW_SYNC_ID}
           margin={{ top: 8, right: 4, left: 0, bottom: showBrush ? 4 : 0 }}
         >
-          <defs>
-            <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={accentColor} stopOpacity={0.22} />
-              <stop offset="100%" stopColor={accentColor} stopOpacity={0} />
-            </linearGradient>
-          </defs>
+          {!paper && (
+            <defs>
+              <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={accentColor} stopOpacity={0.22} />
+                <stop offset="100%" stopColor={accentColor} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+          )}
           <CartesianGrid {...chartGridProps(chartColors.grid)} />
           <XAxis
             dataKey="date"
             tick={tick}
             tickLine={false}
-            axisLine={{ stroke: chartColors.grid, strokeOpacity: 0.7 }}
+            axisLine={{ stroke: paper ? '#404040' : chartColors.grid, strokeOpacity: paper ? 1 : 0.7 }}
             interval="preserveStartEnd"
             minTickGap={28}
           />
           <YAxis
             tick={tick}
             tickLine={false}
-            axisLine={false}
+            axisLine={paper ? { stroke: '#404040' } : false}
             tickFormatter={(v: number) => `$${v.toFixed(1)}`}
             width={44}
           />
@@ -139,7 +142,8 @@ export function UsageTrendChart({ daily }: UsageTrendChartProps) {
             dataKey="cost"
             stroke={accentColor}
             strokeWidth={2}
-            fill="url(#costGradient)"
+            fill={paper ? 'none' : 'url(#costGradient)'}
+            fillOpacity={paper ? 0 : 1}
             dot={false}
             activeDot={{
               r: 3,

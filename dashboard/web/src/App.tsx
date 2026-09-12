@@ -26,6 +26,8 @@ import { DataSyncBar } from './components/DataSyncBar'
 import { ProfileSwitcher } from './components/ProfileSwitcher'
 import { UsageRhythmSection } from './components/UsageRhythmSection'
 import { SmartInsightBanner } from './components/SmartInsightBanner'
+import { PaperOverview } from './components/PaperOverview'
+import { PaperMoreMenu } from './components/PaperMoreMenu'
 import { mergeDailyEntries, type DailyEntry as MergeDailyEntry } from './lib/mergeDaily'
 import type { SyncPulse } from './lib/syncPulse'
 
@@ -86,7 +88,7 @@ interface PluginCursorDailyResponse {
 // ────────── 主应用组件 ──────────
 
 function AppShell() {
-  const { isDark, toggleMode } = useTheme()
+  const { isDark, toggleMode, isPaper } = useTheme()
   const { profilesQuery, selectedKey, selectedIds, profiles } = useProfiles()
 
   // ── 标签页 ──
@@ -290,16 +292,27 @@ function AppShell() {
 
   const mergeSourceIds = mergeEnabled ? addonSources.map((p) => p.id) : []
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'overview', label: '概览 Overview' },
-    { id: 'period-stats', label: '周期统计 Period Stats' },
-    { id: 'reimbursement', label: '报销导出 Reimburse' },
-    { id: 'model-details', label: '模型详情 Model Details' },
-    ...pluginTabs.map((t) => ({
-      id: `plugin:${t.id}` as Tab,
-      label: t.label,
-    })),
-  ]
+  const tabs: { id: Tab; label: string }[] = isPaper
+    ? [
+        { id: 'overview', label: '概览' },
+        { id: 'period-stats', label: '周期' },
+        { id: 'reimbursement', label: '报销' },
+        { id: 'model-details', label: '模型' },
+        ...pluginTabs.map((t) => ({
+          id: `plugin:${t.id}` as Tab,
+          label: t.label,
+        })),
+      ]
+    : [
+        { id: 'overview', label: '概览 Overview' },
+        { id: 'period-stats', label: '周期统计 Period Stats' },
+        { id: 'reimbursement', label: '报销导出 Reimburse' },
+        { id: 'model-details', label: '模型详情 Model Details' },
+        ...pluginTabs.map((t) => ({
+          id: `plugin:${t.id}` as Tab,
+          label: t.label,
+        })),
+      ]
 
   const tabRailRef = useRef<HTMLElement>(null)
   const tabBtnRefs = useRef<Map<Tab, HTMLButtonElement>>(new Map())
@@ -329,68 +342,107 @@ function AppShell() {
     <div className="min-h-screen bg-canvas text-fg transition-colors duration-200">
 
       {/* 顶部导航栏 */}
-      <header className="app-header sticky top-0 z-10 px-4 py-3 md:px-8 bg-surface/90 backdrop-blur-md border-b border-line">
-        <div className="flex items-center justify-between gap-3">
+      <header className="app-header sticky top-0 z-10 px-4 py-3 md:px-8">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500 text-white font-bold text-xs shadow-sm shrink-0">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
+            {!isPaper && (
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500 text-white font-bold text-xs shrink-0">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+            )}
             <div className="flex items-center gap-2 min-w-0">
               <h1 className="text-sm md:text-base font-bold tracking-tight text-fg truncate">
-                CURSOR <span className="font-semibold text-fg-muted">API Analytics</span>
+                {isPaper ? (
+                  '用量分析'
+                ) : (
+                  <>
+                    CURSOR <span className="font-semibold text-fg-muted">API Analytics</span>
+                  </>
+                )}
               </h1>
-              <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
-                Live
-              </span>
+              {!isPaper && (
+                <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                  Live
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            <span className="text-xs text-fg-faint font-mono hidden md:block">
-              YTD 2026
-            </span>
+            {isPaper ? (
+              <>
+                <DataSyncBar
+                  onReload={bumpRefresh}
+                  onSyncSuccess={setSyncPulse}
+                  primaryOnly
+                />
+                <PaperMoreMenu>
+                  <ProfileSwitcher onSynced={bumpRefresh} />
+                  <MergeAddonToggle
+                    sources={addonSources}
+                    enabled={mergeEnabled}
+                    onChange={setMerge}
+                    compact
+                  />
+                  <button
+                    type="button"
+                    onClick={bumpRefresh}
+                    className="btn-ghost w-full"
+                  >
+                    重新加载
+                  </button>
+                  <ThemePalettePicker />
+                </PaperMoreMenu>
+              </>
+            ) : (
+              <>
+                <span className="text-xs text-fg-faint font-mono hidden md:block">
+                  YTD 2026
+                </span>
 
-            <MergeAddonToggle
-              sources={addonSources}
-              enabled={mergeEnabled}
-              onChange={setMerge}
-              compact
-            />
-            <ProfileSwitcher onSynced={bumpRefresh} />
-            <DataSyncBar
-              onReload={bumpRefresh}
-              onSyncSuccess={setSyncPulse}
-            />
+                <MergeAddonToggle
+                  sources={addonSources}
+                  enabled={mergeEnabled}
+                  onChange={setMerge}
+                  compact
+                />
+                <ProfileSwitcher onSynced={bumpRefresh} />
+                <DataSyncBar
+                  onReload={bumpRefresh}
+                  onSyncSuccess={setSyncPulse}
+                />
 
-            <div className="toolbar-cluster">
-              <ThemePalettePicker />
-              <button
-                type="button"
-                onClick={toggleMode}
-                className="btn-icon !border-0 !bg-transparent hover:!bg-surface-2"
-                title={isDark ? '切换到亮色模式' : '切换到暗色模式'}
-                aria-label={isDark ? '切换到亮色模式' : '切换到暗色模式'}
-              >
-                {isDark ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="5"/>
-                    <line x1="12" y1="1" x2="12" y2="3"/>
-                    <line x1="12" y1="21" x2="12" y2="23"/>
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                    <line x1="1" y1="12" x2="3" y2="12"/>
-                    <line x1="21" y1="12" x2="23" y2="12"/>
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                  </svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                  </svg>
-                )}
-              </button>
-            </div>
+                <div className="toolbar-cluster">
+                  <ThemePalettePicker />
+                  <button
+                    type="button"
+                    onClick={toggleMode}
+                    className="btn-icon !border-0 !bg-transparent hover:!bg-surface-2"
+                    title={isDark ? '切换到亮色模式' : '切换到暗色模式'}
+                    aria-label={isDark ? '切换到亮色模式' : '切换到暗色模式'}
+                  >
+                    {isDark ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="5"/>
+                        <line x1="12" y1="1" x2="12" y2="3"/>
+                        <line x1="12" y1="21" x2="12" y2="23"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                        <line x1="1" y1="12" x2="3" y2="12"/>
+                        <line x1="21" y1="12" x2="23" y2="12"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -416,7 +468,7 @@ function AppShell() {
               onClick={() => setActiveTab(tab.id)}
               className={`tab-rail-btn ${
                 activeTab === tab.id
-                  ? 'font-semibold text-fg'
+                  ? 'is-active font-semibold text-fg'
                   : 'text-fg-muted hover:text-fg'
               }`}
             >
@@ -427,13 +479,36 @@ function AppShell() {
 
         {/* ── 概览 Tab ── */}
         {activeTab === 'overview' && (
-          <div className="space-y-6">
+          isPaper ? (
+            <PaperOverview
+              daily={displayDaily}
+              filteredDaily={filteredDaily}
+              dailyError={dailyError}
+              dateRange={dateRange}
+              startDate={startDate}
+              endDate={endDate}
+              setStartDate={setStartDate}
+              setEndDate={setEndDate}
+              activePreset={activePreset}
+              applyLastDays={applyLastDays}
+              clearDateFilter={clearDateFilter}
+              refreshKey={refreshKey}
+              mergeSourceIds={mergeSourceIds}
+              profilesQuery={profilesQuery}
+              profilesKey={selectedKey}
+              selectedSummary={selectedSummary}
+              selectedCount={selectedIds.length}
+              mergeEnabled={mergeEnabled}
+              addonCount={addonSources.length}
+            />
+          ) : (
+            <div className="space-y-6">
             {/* 概览标题与快捷控制栏 */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-line/60">
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-xl md:text-2xl font-bold tracking-tight text-fg">
-                    Token Usage Overview
+                    {isPaper ? '这段时间的用量' : 'Token Usage Overview'}
                   </h2>
                   {selectedIds.length > 1 && selectedSummary && (
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-surface-2 text-fg-muted border border-line">
@@ -565,13 +640,14 @@ function AppShell() {
               </section>
             )}
           </div>
+          )
         )}
 
         {/* ── 报销导出 Tab ── */}
         {activeTab === 'reimbursement' && (
           <div className="space-y-6">
             <h2 className="section-title">
-              分月报销记录（按账单刷新日）
+              {isPaper ? '按刷新日导出报销' : '分月报销记录（按账单刷新日）'}
             </h2>
             <ReimbursementView refreshKey={refreshKey} daily={reimburseDaily} />
           </div>
@@ -579,6 +655,16 @@ function AppShell() {
 
         {/* ── 周期统计 Tab ── */}
         {activeTab === 'period-stats' && (
+          isPaper ? (
+            <PeriodStatsView
+              refreshKey={refreshKey}
+              profilesQuery={profilesQuery}
+              profilesKey={selectedKey}
+              identitySummary={
+                selectedIds.length > 1 ? selectedSummary : null
+              }
+            />
+          ) : (
           <div className="space-y-6">
             <h2 className="section-title">
               月度 / 账单周期统计
@@ -594,13 +680,14 @@ function AppShell() {
               profilesKey={selectedKey}
             />
           </div>
+          )
         )}
 
         {/* ── 模型详情 Tab ── */}
         {activeTab === 'model-details' && (
           <div className="space-y-6">
             <h2 className="section-title">
-              模型详情分析
+              {isPaper ? '每个模型每天花多少' : '模型详情分析'}
             </h2>
             {mergeEnabled && addonSources.length > 0 && (
               <p className="text-[11px] text-accent">

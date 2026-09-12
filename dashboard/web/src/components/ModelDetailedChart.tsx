@@ -17,9 +17,11 @@ import {
   ChartLegendRow,
   ChartPanel,
   ChartTooltipShell,
+  paperHatchDefs,
   chartCursorFill,
   chartGridProps,
   chartTickStyle,
+  paperBarProps,
 } from '../lib/chartChrome'
 
 interface DailyEntry {
@@ -126,20 +128,30 @@ export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
   const [mode, setMode] = useState<ViewMode>('usd')
   const chartColors = useChartColors()
   const palette = useMemo(
-    () => [
-      chartColors.chart1,
-      chartColors.chart2,
-      chartColors.chart3,
-      chartColors.chart4,
-      chartColors.chart5,
-      chartColors.poolAuto,
-      chartColors.poolFirst,
-      chartColors.poolApi,
-    ],
+    () =>
+      chartColors.paper
+        ? [
+            chartColors.chart1,
+            chartColors.chart2,
+            chartColors.chart3,
+            chartColors.chart4,
+            chartColors.chart5,
+          ]
+        : [
+            chartColors.chart1,
+            chartColors.chart2,
+            chartColors.chart3,
+            chartColors.chart4,
+            chartColors.chart5,
+            chartColors.poolAuto,
+            chartColors.poolFirst,
+            chartColors.poolApi,
+          ],
     [chartColors],
   )
   const othersColor = chartColors.muted
   const tick = chartTickStyle(chartColors.tick)
+  const paper = chartColors.paper
 
   const topModels = useMemo(() => {
     if (!daily || daily.length === 0) return [] as string[]
@@ -211,7 +223,8 @@ export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
 
   return (
     <ChartPanel
-      title={`每日各模型消耗细分（Top ${topModels.length}）`}
+      title="各模型每天花多少"
+      band="cool"
       actions={<ModeToggle mode={mode} setMode={setMode} />}
     >
       <ChartLegendRow
@@ -226,6 +239,14 @@ export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
           margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
           barCategoryGap="28%"
         >
+          {paperHatchDefs(
+            'modeldetail',
+            allKeys.map((model, i) =>
+              model === '其他' ? othersColor : palette[i % palette.length],
+            ),
+            paper,
+            chartColors.surface,
+          )}
           <CartesianGrid {...chartGridProps(chartColors.grid)} />
           <XAxis
             dataKey="date"
@@ -249,16 +270,19 @@ export function ModelDetailedChart({ daily }: ModelDetailedChartProps) {
             cursor={chartCursorFill(chartColors.cursor)}
             isAnimationActive={false}
           />
-          {allKeys.map((model, i) => (
-            <Bar
-              key={model}
-              dataKey={model}
-              name={model}
-              stackId="a"
-              fill={model === '其他' ? othersColor : palette[i % palette.length]}
-              isAnimationActive={false}
-            />
-          ))}
+          {allKeys.map((model, i) => {
+            const color = model === '其他' ? othersColor : palette[i % palette.length]
+            return (
+              <Bar
+                key={model}
+                dataKey={model}
+                name={model}
+                stackId="a"
+                isAnimationActive={false}
+                {...paperBarProps('modeldetail', color, i, paper)}
+              />
+            )
+          })}
         </BarChart>
       </ResponsiveContainer>
     </ChartPanel>

@@ -8,6 +8,8 @@ import { CollapsibleSection } from './CollapsibleSection'
 import { HourlyDayChart } from './HourlyDayChart'
 import { HourlyHeatmapChart, type HourlyDay } from './HourlyHeatmapChart'
 import { UsageDistributionCompare } from './UsageDistributionCompare'
+import { useTheme } from '../context/ThemeContext'
+import { PaperFigure } from './PaperFigure'
 import {
   mergeHourlyDays,
   type HourlyDayEntry,
@@ -66,10 +68,12 @@ export function UsageRhythmSection({
   profilesQuery,
   profilesKey,
 }: UsageRhythmSectionProps) {
+  const { isPaper } = useTheme()
   const [days, setDays] = useState<HourlyDay[] | null>(null)
   const [today, setToday] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [pickedHourDay, setPickedHourDay] = useState(false)
   const [mergedAddon, setMergedAddon] = useState(false)
 
   const foldKey = foldPluginIds.join('|')
@@ -151,6 +155,78 @@ export function UsageRhythmSection({
     return days.find((d) => d.date === selectedDate) ?? null
   }, [days, selectedDate])
 
+  const heatBlock = error ? (
+    <div className="panel border-danger-border bg-danger-soft p-4 text-danger">
+      加载小时数据失败：{error}
+    </div>
+  ) : (
+    <div
+      className={
+        isPaper
+          ? 'space-y-3'
+          : 'grid gap-4 xl:grid-cols-2 xl:h-[360px] xl:items-stretch'
+      }
+    >
+      <HourlyHeatmapChart
+        days={days}
+        selectedDate={selectedDate}
+        onSelectDate={(d) => {
+          setSelectedDate(d)
+          setPickedHourDay(true)
+        }}
+        today={today}
+        className={
+          isPaper
+            ? '!h-[360px] max-h-[360px]'
+            : 'max-h-[360px] xl:max-h-none xl:h-full'
+        }
+      />
+      {isPaper ? (
+        pickedHourDay && (selectedDay || days == null) ? (
+          <HourlyDayChart
+            day={selectedDay}
+            loading={days == null}
+            className="h-[220px]"
+          />
+        ) : null
+      ) : (
+        <HourlyDayChart
+          day={selectedDay}
+          loading={days == null}
+          className="max-h-[360px] xl:max-h-none xl:h-full"
+        />
+      )}
+    </div>
+  )
+
+  if (isPaper) {
+    return (
+      <>
+        <PaperFigure
+          thesis="用量按小时堆在工作时段"
+          kicker="本地日 × 24 小时，Asia/Shanghai"
+          lede="格子是当天每个钟头的 token 合计。点一天才展开日内对照。底层 /api/hourly。"
+        >
+          {heatBlock}
+          {mergedAddon && (
+            <p className="paper-lede">热力已合并附加代理用量。</p>
+          )}
+        </PaperFigure>
+        <PaperFigure
+          thesis="大用量日很少，但把总量拉上去"
+          kicker="完整本地日的日 token 核密度"
+          lede="比较近 7 / 30 / 90 天的形状。今天未结束，不计入分布。"
+        >
+          <UsageDistributionCompare
+            daily={daily}
+            hourlyDays={days}
+            today={today}
+          />
+        </PaperFigure>
+      </>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <CollapsibleSection
@@ -163,26 +239,7 @@ export function UsageRhythmSection({
             : '加载中'
         }
       >
-        {error ? (
-          <div className="rounded-xl border border-danger-border bg-danger-soft p-4 text-sm text-danger">
-            加载小时数据失败：{error}
-          </div>
-        ) : (
-          <div className="grid gap-4 xl:grid-cols-2 xl:h-[360px] xl:items-stretch">
-            <HourlyHeatmapChart
-              days={days}
-              selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
-              today={today}
-              className="max-h-[360px] xl:max-h-none xl:h-full"
-            />
-            <HourlyDayChart
-              day={selectedDay}
-              loading={days == null}
-              className="max-h-[360px] xl:max-h-none xl:h-full"
-            />
-          </div>
-        )}
+        {heatBlock}
         {mergedAddon && (
           <p className="text-[11px] text-accent">
             热力已合并附加代理用量（随「合并附加用量」开关；关闭后仅主 Cursor）。

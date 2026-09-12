@@ -17,6 +17,15 @@ import {
   Cell,
 } from 'recharts'
 import { useChartColors, useTheme } from '../context/ThemeContext'
+import {
+  paperColorHatchDefs,
+  paperHatchDefs,
+  chartGridProps,
+  paperBarProps,
+  paperColorFill,
+} from '../lib/chartChrome'
+import { PaperFigure } from './PaperFigure'
+import { fmtUsdCompact } from '../lib/paperThesis'
 
 // ────────── 类型 ──────────
 
@@ -98,7 +107,14 @@ const POOL_LABELS: Record<(typeof POOLS)[number], string> = {
 
 const MODEL_HUES = [160, 270, 200, 38, 330, 220, 15, 280, 120, 350, 190, 45, 300, 80, 250, 170, 310, 55, 230, 100]
 
-function modelSeriesColor(index: number, isDark: boolean): string {
+function modelSeriesColor(
+  index: number,
+  isDark: boolean,
+  paperPalette?: string[],
+): string {
+  if (paperPalette && paperPalette.length > 0) {
+    return paperPalette[index % paperPalette.length]
+  }
   const h = MODEL_HUES[index % MODEL_HUES.length]
   return `hsl(${h}, 62%, ${isDark ? '52%' : '46%'})`
 }
@@ -107,15 +123,25 @@ const BILLING_DAY_STORAGE_KEY = 'cursor-dashboard-billing-cycle-day'
 /** 周期数达到此值时，趋势图改为单列全宽 */
 const FULL_WIDTH_MODEL_CHART_MIN_PERIODS = 9
 
-function compactChartShell(compact: boolean): string {
+function compactChartShell(compact: boolean, paper: boolean): string {
+  if (paper) return 'w-full'
   return compact ? 'mx-auto w-full max-w-[280px] sm:max-w-xs' : 'w-full'
 }
 
-function trendGridClass(compact: boolean): string {
+function trendGridClass(compact: boolean, paper: boolean): string {
+  if (paper) return 'paper-grid'
   return compact ? 'grid gap-6 md:grid-cols-2' : 'grid gap-6 grid-cols-1'
 }
 
-function barLayout(compact: boolean, periodCount: number) {
+function barLayout(compact: boolean, periodCount: number, paper: boolean) {
+  if (paper) {
+    return {
+      height: 220,
+      maxBarSize: Math.min(42, Math.max(18, Math.floor(520 / Math.max(periodCount, 1)))),
+      categoryGap: '16%',
+      yAxisWidth: 48,
+    }
+  }
   return {
     height: compact ? 200 : 260,
     maxBarSize: compact
@@ -174,6 +200,18 @@ function fmtShareDelta(n: number | null | undefined): string {
   return `${sign}${(n * 100).toFixed(1)}pt`
 }
 
+function latestPeriodThesis(periods: PeriodEntry[], mode: ViewMode): string {
+  const latest = periods[periods.length - 1]
+  const unit = mode === 'billing' ? '最近一个账单周期' : '最近一个自然月'
+  if (!latest) return mode === 'billing' ? '按账单周期看花费' : '按自然月看花费'
+  const money = fmtUsdCompact(latest.totalCost)
+  const pct = latest.changes?.costPct
+  if (pct == null) return `${unit}公开单价等效约 ${money}`
+  const abs = Math.abs(pct * 100)
+  if (abs < 3) return `${unit}约 ${money}，环比大致持平`
+  return `${unit}约 ${money}，环比${pct > 0 ? '升' : '降'} ${abs.toFixed(0)}%`
+}
+
 function poolSharesFallback(
   byPool: PoolValues,
   total: number,
@@ -221,6 +259,7 @@ function buildModelStackedBarData(
   isDark: boolean,
   metric: 'cost' | 'tokens',
   otherColor: string,
+  paperPalette?: string[],
 ) {
   const allModels = new Set<string>()
   const modelTotals = new Map<string, number>()
@@ -261,7 +300,7 @@ function buildModelStackedBarData(
     (a, b) => (modelTotals.get(b) ?? 0) - (modelTotals.get(a) ?? 0),
   )
   sortedModels.forEach((key, i) => {
-    modelColorMap.set(key, modelSeriesColor(i, isDark))
+    modelColorMap.set(key, modelSeriesColor(i, isDark, paperPalette))
   })
   modelColorMap.set('其他', otherColor)
 
@@ -352,6 +391,7 @@ interface ModelStackedBarChartProps {
   tickFill: string
   surface: string
   border: string
+  paper: boolean
 }
 
 function ModelStackedBarChart({
@@ -364,15 +404,27 @@ function ModelStackedBarChart({
   tickFill,
   surface,
   border,
+  paper,
 }: ModelStackedBarChartProps) {
+  const layerColors = bars.flatMap((b) =>
+    (b.__layerMeta ?? []).map((m) => m?.color).filter(Boolean),
+  ) as string[]
   return (
     <BarChart data={bars} barCategoryGap={barsLayout.categoryGap}>
-      <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-      <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
+      {paperColorHatchDefs(stackId, layerColors, paper, surface)}
+      <CartesianGrid {...chartGridProps(gridStroke)} />
+      <XAxis
+        dataKey="label"
+        tick={{ fill: tickFill, fontSize: paper ? 13 : 11 }}
+        tickLine={false}
+        axisLine={paper ? { stroke: '#404040' } : undefined}
+      />
       <YAxis
-        tick={{ fill: tickFill, fontSize: 11 }}
+        tick={{ fill: tickFill, fontSize: paper ? 13 : 11 }}
         tickFormatter={(v) => (metric === 'cost' ? `$${v}` : `${v}M`)}
         width={barsLayout.yAxisWidth}
+        tickLine={false}
+        axisLine={paper ? { stroke: '#404040' } : false}
       />
       <Tooltip
         content={
@@ -391,16 +443,21 @@ function ModelStackedBarChart({
           stackId={stackId}
           maxBarSize={barsLayout.maxBarSize}
           radius={
-            layerIdx === layerCount - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]
+            paper ? [0, 0, 0, 0] : layerIdx === layerCount - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]
           }
           isAnimationActive={false}
         >
-          {bars.map((entry, index) => (
-            <Cell
-              key={`${layerIdx}-${index}`}
-              fill={entry.__layerMeta[layerIdx]?.color ?? 'transparent'}
-            />
-          ))}
+          {bars.map((entry, index) => {
+            const color = entry.__layerMeta[layerIdx]?.color ?? 'transparent'
+            return (
+              <Cell
+                key={`${layerIdx}-${index}`}
+                fill={paperColorFill(stackId, color, paper)}
+                stroke={paper && color !== 'transparent' ? color : undefined}
+                strokeWidth={paper ? 1 : 0}
+              />
+            )
+          })}
         </Bar>
       ))}
     </BarChart>
@@ -559,12 +616,14 @@ export function PeriodStatsView({
   refreshKey,
   profilesQuery,
   profilesKey,
+  identitySummary,
 }: {
   refreshKey?: number
   profilesQuery?: string
   profilesKey?: string
+  identitySummary?: string | null
 }) {
-  const { isDark } = useTheme()
+  const { isDark, isPaper } = useTheme()
   const chartColors = useChartColors()
   const poolColors = useMemo(
     (): Record<(typeof POOLS)[number], string> => ({
@@ -640,6 +699,19 @@ export function PeriodStatsView({
     }))
   }, [activeGroup, viewMode])
 
+  const paperModelPalette = useMemo(
+    () =>
+      chartColors.paper
+        ? [
+            chartColors.chart1,
+            chartColors.chart2,
+            chartColors.chart3,
+            chartColors.chart4,
+          ]
+        : undefined,
+    [chartColors],
+  )
+
   const modelStackedBarData = useMemo(() => {
     if (!activeGroup) return { bars: [], layerCount: 0, uniqueModelCount: 0 }
     return buildModelStackedBarData(
@@ -649,8 +721,9 @@ export function PeriodStatsView({
       isDark,
       'cost',
       chartColors.muted,
+      paperModelPalette,
     )
-  }, [activeGroup, viewMode, topModelCount, isDark, chartColors.muted])
+  }, [activeGroup, viewMode, topModelCount, isDark, chartColors.muted, paperModelPalette])
 
   const modelTokenStackedBarData = useMemo(() => {
     if (!activeGroup) return { bars: [], layerCount: 0, uniqueModelCount: 0 }
@@ -661,8 +734,9 @@ export function PeriodStatsView({
       isDark,
       'tokens',
       chartColors.muted,
+      paperModelPalette,
     )
-  }, [activeGroup, viewMode, topModelCount, isDark, chartColors.muted])
+  }, [activeGroup, viewMode, topModelCount, isDark, chartColors.muted, paperModelPalette])
 
   const poolChartData = useMemo(() => {
     if (!activeGroup) return []
@@ -717,144 +791,345 @@ export function PeriodStatsView({
   const dayMax = data.billingCycleDayRange?.max ?? 28
   const periodCount = chartData.length
   const compactTrendLayout = periodCount < FULL_WIDTH_MODEL_CHART_MIN_PERIODS
-  const bars = barLayout(compactTrendLayout, periodCount)
+  const bars = barLayout(compactTrendLayout, periodCount, isPaper)
+  const latest = activeGroup.periods[activeGroup.periods.length - 1]
+  const topToggle = (
+    <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-0.5">
+      {([3, 5] as const).map((n) => (
+        <button
+          key={n}
+          type="button"
+          onClick={() => setTopModelCount(n)}
+          className={`px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
+            topModelCount === n
+              ? 'bg-accent-soft text-accent'
+              : 'text-fg-muted hover:text-fg hover:bg-surface'
+          }`}
+        >
+          Top {n}
+        </button>
+      ))}
+    </div>
+  )
 
-  return (
-    <div className="space-y-6">
-      {/* 控制栏 */}
-      <section className="flex flex-wrap items-center gap-4 panel bg-surface-2 px-4 py-3">
-        <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-0.5">
-          <button
-            type="button"
-            onClick={() => setViewMode('billing')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-              viewMode === 'billing'
-                ? 'bg-surface text-violet'
-                : 'text-fg-muted hover:text-fg hover:bg-surface'
-            }`}
-          >
-            账单周期
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('calendar')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-              viewMode === 'calendar'
-                ? 'bg-surface text-violet'
-                : 'text-fg-muted hover:text-fg hover:bg-surface'
-            }`}
-          >
-            自然月
-          </button>
+  const costModelChart = (
+    <div className={isPaper ? undefined : 'panel p-4'}>
+      {!isPaper && (
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h4 className="text-[11px] font-medium text-fg-muted">
+            按模型堆叠（Top {topModelCount}）
+          </h4>
+          {topToggle}
         </div>
+      )}
+      {isPaper && <div className="flex justify-end mb-2">{topToggle}</div>}
+      {modelStackedBarData.bars.length === 0 ? (
+        <p className="text-xs text-fg-faint text-center py-16">无数据</p>
+      ) : (
+        <div className={compactChartShell(compactTrendLayout, isPaper)}>
+          <ResponsiveContainer width="100%" height={bars.height}>
+            <ModelStackedBarChart
+              bars={modelStackedBarData.bars}
+              layerCount={modelStackedBarData.layerCount}
+              metric="cost"
+              stackId="models"
+              barsLayout={bars}
+              gridStroke={gridStroke}
+              tickFill={tickFill}
+              surface={chartColors.surface}
+              border={chartColors.border}
+              paper={chartColors.paper}
+            />
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  )
 
-        <label className="flex items-center gap-2 text-xs text-fg-muted">
-          账单起始日
-          <input
-            type="number"
-            min={dayMin}
-            max={dayMax}
-            value={billingCycleDay}
-            onChange={(e) => {
-              const n = Number(e.target.value)
-              if (Number.isFinite(n)) {
-                setBillingCycleDay(Math.min(dayMax, Math.max(dayMin, Math.round(n))))
-              }
-            }}
-            className="w-16 bg-surface-2 border border-line rounded-lg px-2 py-1 text-xs text-fg
-                       focus:outline-none focus:border-violet"
-          />
-          日
-        </label>
+  const tokenModelChart = (
+    <div className={isPaper ? undefined : 'panel p-4'}>
+      {!isPaper && (
+        <h4 className="text-[11px] font-medium text-fg-muted mb-4">
+          按模型堆叠（Token Top {topModelCount}）
+        </h4>
+      )}
+      {modelTokenStackedBarData.bars.length === 0 ? (
+        <p className="text-xs text-fg-faint text-center py-16">无数据</p>
+      ) : (
+        <div className={compactChartShell(compactTrendLayout, isPaper)}>
+          <ResponsiveContainer width="100%" height={bars.height}>
+            <ModelStackedBarChart
+              bars={modelTokenStackedBarData.bars}
+              layerCount={modelTokenStackedBarData.layerCount}
+              metric="tokens"
+              stackId="models-token"
+              barsLayout={bars}
+              gridStroke={gridStroke}
+              tickFill={tickFill}
+              surface={chartColors.surface}
+              border={chartColors.border}
+              paper={chartColors.paper}
+            />
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  )
 
+  const fastLineChart = (
+    <div className={isPaper ? undefined : 'panel p-4'}>
+      {!isPaper && (
+        <h4 className="text-[11px] font-medium text-fg-muted mb-4">
+          总量 & Fast 比例
+        </h4>
+      )}
+      <div className={compactChartShell(compactTrendLayout, isPaper)}>
+        <ResponsiveContainer width="100%" height={bars.height}>
+          <LineChart data={chartData}>
+            <CartesianGrid {...chartGridProps(gridStroke)} />
+            <XAxis
+              dataKey="label"
+              tick={{ fill: tickFill, fontSize: isPaper ? 13 : 11 }}
+              tickLine={false}
+              axisLine={isPaper ? { stroke: '#404040' } : undefined}
+            />
+            <YAxis
+              yAxisId="left"
+              tick={{ fill: tickFill, fontSize: isPaper ? 13 : 11 }}
+              tickFormatter={(v) => `${v}%`}
+              width={bars.yAxisWidth}
+              tickLine={false}
+              axisLine={isPaper ? { stroke: '#404040' } : false}
+            />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              tick={{ fill: tickFill, fontSize: isPaper ? 13 : 11 }}
+              tickFormatter={(v) => `${v}M`}
+              width={bars.yAxisWidth}
+              tickLine={false}
+              axisLine={false}
+            />
+            <Tooltip contentStyle={tooltipBoxStyle(chartColors.surface, chartColors.border)} />
+            <Legend wrapperStyle={{ fontSize: 10 }} />
+            <Line
+              yAxisId="left"
+              type="monotone"
+              dataKey="fastRatio"
+              name="Fast %"
+              stroke={chartColors.poolFirst}
+              strokeWidth={2}
+              dot={{ r: 3 }}
+            />
+            <Line
+              yAxisId="right"
+              type="monotone"
+              dataKey="tokens"
+              name="Token (M)"
+              stroke={chartColors.poolApi}
+              strokeWidth={2}
+              dot={{ r: 3 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+
+  const poolBarChart = (
+    <div className={isPaper ? undefined : 'panel p-4'}>
+      {!isPaper && (
+        <h4 className="text-[11px] font-medium text-fg-muted mb-4">
+          Auto / First-party / API 池（Token）
+        </h4>
+      )}
+      <div className={compactChartShell(compactTrendLayout, isPaper)}>
+        <ResponsiveContainer width="100%" height={bars.height}>
+          <BarChart data={poolChartData} barCategoryGap={bars.categoryGap}>
+            {paperHatchDefs(
+              'period-pool',
+              [poolColors.Auto, poolColors.FirstParty, poolColors.API],
+              chartColors.paper,
+              chartColors.surface,
+            )}
+            <CartesianGrid {...chartGridProps(gridStroke)} />
+            <XAxis
+              dataKey="label"
+              tick={{ fill: tickFill, fontSize: isPaper ? 13 : 11 }}
+              tickLine={false}
+              axisLine={isPaper ? { stroke: '#404040' } : undefined}
+            />
+            <YAxis
+              tick={{ fill: tickFill, fontSize: isPaper ? 13 : 11 }}
+              tickFormatter={(v) => `${v}M`}
+              width={bars.yAxisWidth}
+              tickLine={false}
+              axisLine={isPaper ? { stroke: '#404040' } : false}
+            />
+            <Tooltip contentStyle={tooltipBoxStyle(chartColors.surface, chartColors.border)} />
+            <Legend wrapperStyle={{ fontSize: 10 }} />
+            <Bar
+              dataKey="tokensAuto"
+              name="Auto"
+              stackId="pool-tokens"
+              maxBarSize={bars.maxBarSize}
+              {...paperBarProps('period-pool', poolColors.Auto, 0, chartColors.paper)}
+            />
+            <Bar
+              dataKey="tokensFirstParty"
+              name="First-party"
+              stackId="pool-tokens"
+              maxBarSize={bars.maxBarSize}
+              {...paperBarProps('period-pool', poolColors.FirstParty, 1, chartColors.paper)}
+            />
+            <Bar
+              dataKey="tokensAPI"
+              name="API"
+              stackId="pool-tokens"
+              maxBarSize={bars.maxBarSize}
+              radius={chartColors.paper ? [0, 0, 0, 0] : [4, 4, 0, 0]}
+              {...paperBarProps('period-pool', poolColors.API, 2, chartColors.paper)}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+
+  const controls = (
+    <>
+      <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-0.5">
         <button
           type="button"
-          onClick={() => setBillingCycleDay(data.defaultBillingCycleDay ?? 23)}
-          className="text-xs text-fg-faint hover:text-fg underline underline-offset-2"
+          onClick={() => setViewMode('billing')}
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            viewMode === 'billing'
+              ? 'bg-surface text-violet'
+              : 'text-fg-muted hover:text-fg hover:bg-surface'
+          }`}
         >
-          恢复默认 ({data.defaultBillingCycleDay ?? 23})
+          账单周期
         </button>
+        <button
+          type="button"
+          onClick={() => setViewMode('calendar')}
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            viewMode === 'calendar'
+              ? 'bg-surface text-violet'
+              : 'text-fg-muted hover:text-fg hover:bg-surface'
+          }`}
+        >
+          自然月
+        </button>
+      </div>
 
-        <span className="ml-auto text-xs text-fg-faint font-mono">
-          {activeGroup.periods.length} 个周期 · {data.ms ?? 0}ms
-        </span>
-      </section>
+      <label className="flex items-center gap-2 text-xs text-fg-muted">
+        账单起始日
+        <input
+          type="number"
+          min={dayMin}
+          max={dayMax}
+          value={billingCycleDay}
+          onChange={(e) => {
+            const n = Number(e.target.value)
+            if (Number.isFinite(n)) {
+              setBillingCycleDay(Math.min(dayMax, Math.max(dayMin, Math.round(n))))
+            }
+          }}
+          className="w-16 bg-surface-2 border border-line rounded-lg px-2 py-1 text-xs text-fg
+                     focus:outline-none focus:border-violet"
+        />
+        日
+      </label>
 
-      {/* 花费趋势 + Token 趋势 */}
+      <button
+        type="button"
+        onClick={() => setBillingCycleDay(data.defaultBillingCycleDay ?? 23)}
+        className="text-xs text-fg-faint hover:text-fg underline underline-offset-2"
+      >
+        恢复默认 ({data.defaultBillingCycleDay ?? 23})
+      </button>
+    </>
+  )
+
+  return (
+    <div className={isPaper ? 'paper-overview' : 'space-y-6'}>
+      {isPaper ? (
+        <section className="paper-masthead">
+          <div className="paper-masthead-copy">
+            <h2 className="paper-thesis">
+              {latestPeriodThesis(activeGroup.periods, viewMode)}
+            </h2>
+            <p className="paper-kicker">
+              {viewMode === 'billing'
+                ? `账单周期按起始日 ${billingCycleDay} 切段，不是日历月。`
+                : '自然月按日期字符串的年-月聚合。'}
+            </p>
+            {identitySummary && (
+              <p className="paper-lede">多身份合计：{identitySummary}</p>
+            )}
+            {latest && (
+              <p className="paper-facts">
+                {latest.label} · {fmtUsd(latest.totalCost)} · {fmtTokens(latest.totalTokens)} token ·{' '}
+                {activeGroup.periods.length} 个周期
+              </p>
+            )}
+          </div>
+          <div className="paper-masthead-num">
+            {latest && <p className="paper-hero-value">{fmtUsd(latest.totalCost)}</p>}
+            <div className="paper-date-strip">{controls}</div>
+          </div>
+        </section>
+      ) : (
+        <section className="flex flex-wrap items-center gap-4 panel bg-surface-2 px-4 py-3">
+          {controls}
+          <span className="ml-auto text-xs text-fg-faint font-mono">
+            {activeGroup.periods.length} 个周期 · {data.ms ?? 0}ms
+          </span>
+        </section>
+      )}
+
       {chartData.length > 0 && poolChartData.length > 0 && (
+        isPaper ? (
+          <div className="paper-grid">
+            <PaperFigure
+              thesis="花费从哪些模型来"
+              kicker={`按模型堆叠 equivalent USD · Top ${topModelCount}`}
+              lede="每个柱是该周期全部请求按公开费率加总，再按模型切开。"
+            >
+              {costModelChart}
+            </PaperFigure>
+            <PaperFigure
+              thesis="Token 从哪些模型来"
+              kicker={`按模型堆叠 token · Top ${topModelCount}`}
+              lede="口径与左图相同周期，纵轴是 token 百万。"
+            >
+              {tokenModelChart}
+            </PaperFigure>
+            <PaperFigure
+              thesis="Fast 占比和总量一起走"
+              kicker="Fast % · Token (M)"
+              lede="左轴 Fast 行占比，右轴该周期 token 百万。不是 Cursor 发票。"
+            >
+              {fastLineChart}
+            </PaperFigure>
+            <PaperFigure
+              thesis="三个池的 token 怎么分"
+              kicker="Auto / First-party / API"
+              lede="池由 billingPool 与模型费率表划分。"
+            >
+              {poolBarChart}
+            </PaperFigure>
+          </div>
+        ) : (
         <>
           <section className="space-y-3">
             <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
               花费趋势
             </h3>
-            <div className={trendGridClass(compactTrendLayout)}>
-              <div className="panel p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                  <h4 className="text-[11px] font-medium text-fg-muted">
-                    按模型堆叠（Top {topModelCount}）
-                  </h4>
-                  <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-0.5">
-                    {([3, 5] as const).map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() => setTopModelCount(n)}
-                        className={`px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
-                          topModelCount === n
-                            ? 'bg-accent-soft text-accent'
-                            : 'text-fg-muted hover:text-fg hover:bg-surface'
-                        }`}
-                      >
-                        Top {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {modelStackedBarData.bars.length === 0 ? (
-                  <p className="text-xs text-fg-faint text-center py-16">无数据</p>
-                ) : (
-                  <div className={compactChartShell(compactTrendLayout)}>
-                    <ResponsiveContainer width="100%" height={bars.height}>
-                      <ModelStackedBarChart
-                        bars={modelStackedBarData.bars}
-                        layerCount={modelStackedBarData.layerCount}
-                        metric="cost"
-                        stackId="models"
-                        barsLayout={bars}
-                        gridStroke={gridStroke}
-                        tickFill={tickFill}
-                        surface={chartColors.surface}
-                        border={chartColors.border}
-                      />
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </div>
-
-              <div className="panel p-4">
-                <h4 className="text-[11px] font-medium text-fg-muted mb-4">
-                  按模型堆叠（Token Top {topModelCount}）
-                </h4>
-                {modelTokenStackedBarData.bars.length === 0 ? (
-                  <p className="text-xs text-fg-faint text-center py-16">无数据</p>
-                ) : (
-                  <div className={compactChartShell(compactTrendLayout)}>
-                    <ResponsiveContainer width="100%" height={bars.height}>
-                      <ModelStackedBarChart
-                        bars={modelTokenStackedBarData.bars}
-                        layerCount={modelTokenStackedBarData.layerCount}
-                        metric="tokens"
-                        stackId="models-token"
-                        barsLayout={bars}
-                        gridStroke={gridStroke}
-                        tickFill={tickFill}
-                        surface={chartColors.surface}
-                        border={chartColors.border}
-                      />
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </div>
+            <div className={trendGridClass(compactTrendLayout, false)}>
+              {costModelChart}
+              {tokenModelChart}
             </div>
           </section>
 
@@ -862,103 +1137,16 @@ export function PeriodStatsView({
             <h3 className="text-xs font-medium uppercase tracking-widest text-fg-faint">
               Token 趋势
             </h3>
-            <div className={trendGridClass(compactTrendLayout)}>
-              <div className="panel p-4">
-                <h4 className="text-[11px] font-medium text-fg-muted mb-4">
-                  总量 & Fast 比例
-                </h4>
-                <div className={compactChartShell(compactTrendLayout)}>
-                  <ResponsiveContainer width="100%" height={bars.height}>
-                    <LineChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-                      <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
-                      <YAxis
-                        yAxisId="left"
-                        tick={{ fill: tickFill, fontSize: 11 }}
-                        tickFormatter={(v) => `${v}%`}
-                        width={bars.yAxisWidth}
-                      />
-                      <YAxis
-                        yAxisId="right"
-                        orientation="right"
-                        tick={{ fill: tickFill, fontSize: 11 }}
-                        tickFormatter={(v) => `${v}M`}
-                        width={bars.yAxisWidth}
-                      />
-                      <Tooltip contentStyle={tooltipBoxStyle(chartColors.surface, chartColors.border)} />
-                      <Legend wrapperStyle={{ fontSize: 10 }} />
-                      <Line
-                        yAxisId="left"
-                        type="monotone"
-                        dataKey="fastRatio"
-                        name="Fast %"
-                        stroke={chartColors.poolFirst}
-                        strokeWidth={2}
-                        dot={{ r: 3 }}
-                      />
-                      <Line
-                        yAxisId="right"
-                        type="monotone"
-                        dataKey="tokens"
-                        name="Token (M)"
-                        stroke={chartColors.poolApi}
-                        strokeWidth={2}
-                        dot={{ r: 3 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              <div className="panel p-4">
-                <h4 className="text-[11px] font-medium text-fg-muted mb-4">
-                  Auto / First-party / API 池（Token）
-                </h4>
-                <div className={compactChartShell(compactTrendLayout)}>
-                  <ResponsiveContainer width="100%" height={bars.height}>
-                    <BarChart data={poolChartData} barCategoryGap={bars.categoryGap}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-                      <XAxis dataKey="label" tick={{ fill: tickFill, fontSize: 11 }} />
-                      <YAxis
-                        tick={{ fill: tickFill, fontSize: 11 }}
-                        tickFormatter={(v) => `${v}M`}
-                        width={bars.yAxisWidth}
-                      />
-                      <Tooltip contentStyle={tooltipBoxStyle(chartColors.surface, chartColors.border)} />
-                      <Legend wrapperStyle={{ fontSize: 10 }} />
-                      <Bar
-                        dataKey="tokensAuto"
-                        name="Auto"
-                        stackId="pool-tokens"
-                        fill={poolColors.Auto}
-                        maxBarSize={bars.maxBarSize}
-                      />
-                      <Bar
-                        dataKey="tokensFirstParty"
-                        name="First-party"
-                        stackId="pool-tokens"
-                        fill={poolColors.FirstParty}
-                        maxBarSize={bars.maxBarSize}
-                      />
-                      <Bar
-                        dataKey="tokensAPI"
-                        name="API"
-                        stackId="pool-tokens"
-                        fill={poolColors.API}
-                        maxBarSize={bars.maxBarSize}
-                        radius={[4, 4, 0, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
+            <div className={trendGridClass(compactTrendLayout, false)}>
+              {fastLineChart}
+              {poolBarChart}
             </div>
           </section>
         </>
+        )
       )}
 
-      {/* 汇总表 */}
-      <section className="panel overflow-hidden">
+      <section className={`panel overflow-hidden ${isPaper ? 'paper-period-table' : ''}`}>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -986,7 +1174,9 @@ export function PeriodStatsView({
                 >
                   <td className="px-4 py-3">
                     <p className="font-medium text-fg">{p.label}</p>
-                    <p className="text-[10px] text-fg-faint font-mono">{p.startDate} ~ {p.endDate}</p>
+                    {!(isPaper && p.label.replace('→', '~').includes(p.startDate)) && (
+                      <p className="text-[10px] text-fg-faint font-mono">{p.startDate} ~ {p.endDate}</p>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-accent">
                     {fmtUsd(p.totalCost)}
@@ -1026,7 +1216,11 @@ export function PeriodStatsView({
                       {p.topModels.map((m) => (
                         <span
                           key={m.model}
-                          className="inline-block rounded-md bg-surface-2 px-2 py-0.5 text-[10px] text-fg-muted"
+                          className={
+                            isPaper
+                              ? 'paper-model-chip font-mono text-fg'
+                              : 'inline-block rounded-md bg-surface-2 px-2 py-0.5 text-[10px] text-fg-muted'
+                          }
                           title={`${fmtUsd(m.cost)} · ${fmtTokens(m.tokens)}`}
                         >
                           {m.model}
@@ -1041,12 +1235,13 @@ export function PeriodStatsView({
         </div>
       </section>
 
-      {/* 周期卡片 */}
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {[...activeGroup.periods].reverse().map((p) => (
-          <PeriodCard key={p.key} period={p} poolColors={poolColors} />
-        ))}
-      </section>
+      {!isPaper && (
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[...activeGroup.periods].reverse().map((p) => (
+            <PeriodCard key={p.key} period={p} poolColors={poolColors} />
+          ))}
+        </section>
+      )}
     </div>
   )
 }

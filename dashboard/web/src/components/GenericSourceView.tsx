@@ -15,6 +15,11 @@ import {
 } from 'recharts'
 import { useChartColors } from '../context/ThemeContext'
 import {
+  paperHatchDefs,
+  chartGridProps,
+  paperBarProps,
+} from '../lib/chartChrome'
+import {
   MergeAddonToggle,
   type AddonSourceInfo,
 } from './MergeAddonToggle'
@@ -299,7 +304,18 @@ export function GenericSourceView({
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
+                {paperHatchDefs(
+                  'plugin-daily',
+                  [
+                    barColors.cacheRead,
+                    barColors.inputCacheWrite,
+                    barColors.inputNoCache,
+                    barColors.outputTokens,
+                  ],
+                  chartColors.paper,
+                  chartColors.surface,
+                )}
+                <CartesianGrid {...chartGridProps(chartColors.grid)} />
                 <XAxis dataKey="date" tick={{ fill: chartColors.tick, fontSize: 11 }} />
                 <YAxis tick={{ fill: chartColors.tick, fontSize: 11 }} tickFormatter={fmtTokens} />
                 <Tooltip
@@ -311,10 +327,30 @@ export function GenericSourceView({
                   }}
                 />
                 <Legend />
-                <Bar dataKey="cacheRead" stackId="t" fill={barColors.cacheRead} name="Cache Read" />
-                <Bar dataKey="inputCacheWrite" stackId="t" fill={barColors.inputCacheWrite} name="Cache Write" />
-                <Bar dataKey="inputNoCache" stackId="t" fill={barColors.inputNoCache} name="Input" />
-                <Bar dataKey="outputTokens" stackId="t" fill={barColors.outputTokens} name="Output" />
+                <Bar
+                  dataKey="cacheRead"
+                  stackId="t"
+                  name="Cache Read"
+                  {...paperBarProps('plugin-daily', barColors.cacheRead, 0, chartColors.paper)}
+                />
+                <Bar
+                  dataKey="inputCacheWrite"
+                  stackId="t"
+                  name="Cache Write"
+                  {...paperBarProps('plugin-daily', barColors.inputCacheWrite, 1, chartColors.paper)}
+                />
+                <Bar
+                  dataKey="inputNoCache"
+                  stackId="t"
+                  name="Input"
+                  {...paperBarProps('plugin-daily', barColors.inputNoCache, 2, chartColors.paper)}
+                />
+                <Bar
+                  dataKey="outputTokens"
+                  stackId="t"
+                  name="Output"
+                  {...paperBarProps('plugin-daily', barColors.outputTokens, 3, chartColors.paper)}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -13,6 +13,13 @@ import {
   YAxis,
 } from 'recharts'
 import type { DailyEntry } from '../App'
+import { useChartColors } from '../context/ThemeContext'
+import {
+  paperHatchDefs,
+  chartGridProps,
+  chartTickStyle,
+  paperBarProps,
+} from '../lib/chartChrome'
 import {
   exportElementToPng,
   exportManyElementsToPng,
@@ -163,6 +170,8 @@ function ReimbursementMonthCard({
   generatedAt,
   disclaimer,
 }: MonthCardProps) {
+  const chartColors = useChartColors()
+  const tick = chartTickStyle(chartColors.tick)
   const costShare =
     period.costShareByPool ??
     poolSharesFallback(period.costByPool, period.totalCost)
@@ -337,27 +346,43 @@ function ReimbursementMonthCard({
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={dailyChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              {paperHatchDefs(
+                `reimb-${period.key.replace(/[^a-zA-Z0-9_-]/g, '')}`,
+                [chartColors.chart1],
+                chartColors.paper,
+                chartColors.surface,
+              )}
+              <CartesianGrid {...chartGridProps(chartColors.grid)} />
               <XAxis
                 dataKey="date"
-                tick={{ fill: '#64748b', fontSize: 10 }}
+                tick={tick}
                 interval="preserveStartEnd"
               />
               <YAxis
-                tick={{ fill: '#64748b', fontSize: 10 }}
+                tick={tick}
                 tickFormatter={(v: number) => `$${v.toFixed(1)}`}
                 width={48}
               />
               <Tooltip
                 contentStyle={{
-                  background: '#fff',
-                  border: '1px solid #e2e8f0',
+                  background: chartColors.surface,
+                  border: `1px solid ${chartColors.border}`,
                   borderRadius: 8,
                   fontSize: 11,
                 }}
                 labelFormatter={(label) => `日期 ${label}`}
               />
-              <Bar dataKey="cost" fill="#10b981" radius={[3, 3, 0, 0]} maxBarSize={28} />
+              <Bar
+                dataKey="cost"
+                maxBarSize={28}
+                radius={chartColors.paper ? [0, 0, 0, 0] : [3, 3, 0, 0]}
+                {...paperBarProps(
+                  `reimb-${period.key.replace(/[^a-zA-Z0-9_-]/g, '')}`,
+                  chartColors.chart1,
+                  0,
+                  chartColors.paper,
+                )}
+              />
             </BarChart>
           </ResponsiveContainer>
         )}

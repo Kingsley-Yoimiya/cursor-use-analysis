@@ -17,9 +17,11 @@ import {
   ChartPanel,
   ChartTooltipShell,
   OVERVIEW_SYNC_ID,
+  paperHatchDefs,
   chartCursorFill,
   chartGridProps,
   chartTickStyle,
+  paperBarProps,
 } from '../lib/chartChrome'
 
 interface DailyEntry {
@@ -104,6 +106,8 @@ export function TokenDistChart({ daily }: TokenDistChartProps) {
     [chartColors],
   )
   const tick = chartTickStyle(chartColors.tick)
+  const paper = chartColors.paper
+  const seriesColors = SERIES.map((s) => colors[s.key])
 
   if (!daily) {
     return <div className="h-64 animate-pulse panel bg-surface-2" />
@@ -118,7 +122,7 @@ export function TokenDistChart({ daily }: TokenDistChartProps) {
   }))
 
   return (
-    <ChartPanel title="每日 Token 消耗分布">
+    <ChartPanel title="每日 Token 从哪来" band="cool">
       <ChartLegendRow
         items={SERIES.map((s) => ({
           color: colors[s.key],
@@ -132,6 +136,7 @@ export function TokenDistChart({ daily }: TokenDistChartProps) {
           margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
           barCategoryGap="28%"
         >
+          {paperHatchDefs('tokendist', seriesColors, paper, chartColors.surface)}
           <CartesianGrid {...chartGridProps(chartColors.grid)} />
           <XAxis
             dataKey="date"
@@ -153,14 +158,14 @@ export function TokenDistChart({ daily }: TokenDistChartProps) {
             cursor={chartCursorFill(chartColors.cursor)}
             isAnimationActive={false}
           />
-          {SERIES.map((s) => (
+          {SERIES.map((s, i) => (
             <Bar
               key={s.key}
               dataKey={s.key}
               name={s.key}
               stackId="a"
-              fill={colors[s.key]}
               isAnimationActive={false}
+              {...paperBarProps('tokendist', colors[s.key], i, paper)}
             />
           ))}
         </BarChart>

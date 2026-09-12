@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { mergeSummaryByModel, type FoldModelEntry } from '../lib/mergeDaily'
+import { useChartColors } from '../context/ThemeContext'
 import { fmtElapsed, fmtTokens } from '../lib/formatTokens'
 import type { SyncPulse } from '../lib/syncPulse'
 
@@ -55,10 +56,6 @@ function fmtInt(n: number): string {
   return n.toLocaleString('en-US')
 }
 
-function fmtPercent(n: number): string {
-  return `${(n * 100).toFixed(1)}%`
-}
-
 // ────────── 迷你 Sparkline 趋势组件 ──────────
 
 function Sparkline({
@@ -70,6 +67,7 @@ function Sparkline({
   color?: string
   height?: number
 }) {
+  const { paper } = useChartColors()
   if (!data || data.length < 2) return null
   const width = 110
   const max = Math.max(...data, 0.0001)
@@ -91,13 +89,15 @@ function Sparkline({
 
   return (
     <svg className="w-24 h-8 shrink-0 overflow-visible opacity-90" viewBox={`0 0 ${width} ${height}`}>
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.0" />
-        </linearGradient>
-      </defs>
-      <path d={areaD} fill={`url(#${gradId})`} />
+      {!paper && (
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.0" />
+          </linearGradient>
+        </defs>
+      )}
+      {!paper && <path d={areaD} fill={`url(#${gradId})`} />}
       <path
         d={pathD}
         fill="none"
@@ -116,7 +116,6 @@ interface KPICardProps {
   label: string
   value: string
   sub?: string
-  valueColor?: string
   tone?: string
   delta?: string | null
   sparklineData?: number[]
@@ -127,7 +126,6 @@ function KPICard({
   label,
   value,
   sub,
-  valueColor = 'text-fg',
   tone = '#10b981',
   hero = false,
   delta = null,
@@ -136,13 +134,15 @@ function KPICard({
 }: KPICardProps & { hero?: boolean }) {
   return (
     <div
-      className="p-4 md:p-5 bg-surface border border-line rounded-xl shadow-sm hover:border-line/80 transition-all flex flex-col justify-between"
+      className={`kpi-card ${hero ? 'kpi-hero' : ''}`}
+      style={{ ['--kpi-tone' as string]: tone }}
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-faint">{label}</p>
+          <p className="section-label">{label}</p>
           <p
-            className={`mt-1 font-mono tracking-tight font-bold ${hero ? 'text-2xl md:text-3xl' : 'text-xl md:text-2xl'} ${valueColor}`}
+            className={`kpi-value mt-1 ${hero ? 'text-2xl md:text-3xl' : 'text-xl md:text-2xl'}`}
+            style={{ color: tone }}
           >
             {value}
           </p>
@@ -189,6 +189,7 @@ export function KPICards({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activePulse, setActivePulse] = useState<SyncPulse | null>(null)
+  const chartColors = useChartColors()
 
   useEffect(() => {
     if (!syncPulse) return
@@ -288,12 +289,6 @@ export function KPICards({
     0,
   )
   const totalCacheRead = models.reduce((sum, m) => sum + m.tokens.cacheRead, 0)
-  const totalInput = models.reduce(
-    (sum, m) =>
-      sum + m.tokens.cacheRead + m.tokens.noCache + m.tokens.cacheWrite,
-    0,
-  )
-  const cacheHitRate = totalInput > 0 ? totalCacheRead / totalInput : 0
 
   const topModel =
     models.length > 0
@@ -359,13 +354,6 @@ export function KPICards({
   const costTrend = daily ? daily.map((d) => d.cost || 0) : []
   const tokenTrend = daily ? daily.map((d) => d.totalTokens || 0) : []
   const rowTrend = daily ? daily.map((d) => d.rows || 0) : []
-  const cacheRateTrend = daily
-    ? daily.map((d) =>
-        d.cacheRead + d.inputNoCache > 0
-          ? d.cacheRead / (d.cacheRead + d.inputNoCache)
-          : 0,
-      )
-    : []
 
   const avgCostPerReq = totals.rows && totals.rows > 0 && totals.totalEstimatedUsd
     ? totals.totalEstimatedUsd / totals.rows
@@ -378,7 +366,7 @@ export function KPICards({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="section-title">核心 KPI 概览</h2>
+        <h2 className="section-title">这段时间花了多少</h2>
         {generatedAt && (
           <span className="text-[11px] text-fg-faint">
             数据生成于 {generatedAt}
@@ -391,58 +379,53 @@ export function KPICards({
         <div className="lg:col-span-4">
           <KPICard
             hero
-            label="Total Estimated Cost"
+            label="公开单价等效总价值"
             value={
               totals.totalEstimatedUsd != null
                 ? fmtUsd(totals.totalEstimatedUsd)
                 : '—'
             }
-            sub="估算 API 总消耗价值 (USD)"
-            valueColor="text-emerald-600 dark:text-emerald-400"
-            tone="#10b981"
+            sub="按公开文档单价估算，不是发票"
+            tone={chartColors.chart1}
             delta={valueDelta}
             sparklineData={costTrend}
-            sparklineColor="#10b981"
+            sparklineColor={chartColors.chart1}
           />
         </div>
 
         {/* 4 核心分项卡片网格 */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 lg:col-span-8">
           <KPICard
-            label="Total Tokens Used"
+            label="Token 总量"
             value={fmtTokens(totalTokens)}
             sub={`Cache Read ${fmtTokens(totalCacheRead)}`}
-            valueColor="text-blue-600 dark:text-blue-400"
-            tone="#3b82f6"
+            tone={chartColors.chart2}
             delta={tokenDelta}
             sparklineData={tokenTrend}
-            sparklineColor="#3b82f6"
+            sparklineColor={chartColors.chart2}
           />
           <KPICard
-            label="Request Count"
+            label="请求行数"
             value={totals.rows != null ? fmtInt(totals.rows) : '—'}
             sub={`未识别模型：${totals.unknownModelRows ?? 0} 行`}
-            valueColor="text-fg"
-            tone="#8b5cf6"
+            tone={chartColors.fg}
             delta={rowsDelta}
             sparklineData={rowTrend}
-            sparklineColor="#8b5cf6"
+            sparklineColor={chartColors.chart4}
           />
           <KPICard
-            label="Model Breakdown"
-            value={`${models.length} Models`}
-            sub={topModel ? `Top: ${topModel.model}` : 'Active Models'}
-            valueColor="text-fg"
-            tone="#f59e0b"
+            label="用过的模型"
+            value={`${models.length} 个`}
+            sub={topModel ? `花费最高：${topModel.model}` : '尚无模型'}
+            tone={chartColors.chart3}
           />
           <KPICard
-            label="Avg Cost / Request"
+            label="单次请求均价"
             value={`$${avgCostPerReq.toFixed(4)}`}
-            sub="平均单次请求成本"
-            valueColor="text-fg"
-            tone="#ef4444"
+            sub="等效 USD / 请求行"
+            tone={chartColors.chart5}
             sparklineData={avgCostTrend}
-            sparklineColor="#ef4444"
+            sparklineColor={chartColors.chart5}
           />
         </div>
       </div>

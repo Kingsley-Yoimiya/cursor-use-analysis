@@ -27,9 +27,13 @@ interface HourlyHeatmapChartProps {
   className?: string
 }
 
-function heatColor(t: number, accent: string, empty: string): string {
+function heatColor(t: number, accent: string, empty: string, paper = false): string {
   if (t <= 0) return empty
   const clamped = Math.min(1, Math.max(0, t))
+  if (paper) {
+    const a = 0.1 + clamped * 0.72
+    return `color-mix(in srgb, #2c2c2c ${Math.round(a * 100)}%, #ffffff)`
+  }
   const a = 0.12 + clamped * 0.88
   return `color-mix(in srgb, ${accent} ${Math.round(a * 100)}%, transparent)`
 }
@@ -97,7 +101,7 @@ export function HourlyHeatmapChart({
   if (viewDays.length === 0) {
     return (
       <ChartPanel
-        title="每日 × 24 小时热力（UTC+8）"
+        title="每天哪个钟头在用"
         className={`h-full ${className}`}
       >
         <p className="text-sm text-fg-muted py-8 text-center">
@@ -111,7 +115,8 @@ export function HourlyHeatmapChart({
 
   return (
     <ChartPanel
-      title="每日 × 24 小时热力（UTC+8）"
+      title="每天哪个钟头在用"
+      band="cool"
       className={`h-full overflow-hidden ${className}`}
       bodyClassName="flex flex-col min-h-0 overflow-hidden"
       actions={
@@ -186,7 +191,12 @@ export function HourlyHeatmapChart({
                       key={h}
                       className="h-3.5 rounded-[1px]"
                       style={{
-                        background: heatColor(v / maxHour, accent, emptyCell),
+                        background: heatColor(
+                          v / maxHour,
+                          accent,
+                          emptyCell,
+                          colors.paper,
+                        ),
                       }}
                       title={`${String(h).padStart(2, '0')}:00 · ${
                         metric === 'cost' ? fmtUsdShort(v) : fmtTokens(v)

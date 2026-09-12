@@ -64,9 +64,9 @@ export function SmartInsightBanner({ daily }: SmartInsightBannerProps) {
   if (!insights) return null
 
   return (
-    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 md:px-6 md:py-4 bg-surface border border-line rounded-xl shadow-sm transition-all">
+    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 md:px-6 md:py-4 bg-surface border border-line">
       <div className="flex items-center gap-3.5 min-w-0">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/40">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-line text-accent bg-accent-soft">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
@@ -74,13 +74,13 @@ export function SmartInsightBanner({ daily }: SmartInsightBannerProps) {
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold text-fg tracking-tight">智能用量洞察</span>
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100/80 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-mono">
+            <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold bg-accent-soft text-accent font-mono">
               Cache Read 命中率 {insights.cacheHitRate.toFixed(1)}%
             </span>
           </div>
           <p className="mt-0.5 text-xs text-fg-muted">
-            近 <strong className="font-semibold text-fg font-mono">{insights.daysCount}</strong> 天内，Prompt Caching 已为您估算节省约{' '}
-            <span className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
+            近 <strong className="font-semibold text-fg font-mono">{insights.daysCount}</strong> 天内，Prompt Caching 估算差额约{' '}
+            <span className="font-semibold text-accent font-mono">
               ${insights.cacheSavingsUsd.toFixed(2)}
             </span>
             ；用量最高的模型为{' '}
@@ -90,7 +90,7 @@ export function SmartInsightBanner({ daily }: SmartInsightBannerProps) {
       </div>
 
       <div className="flex items-center gap-2 shrink-0 text-[11px] font-medium text-fg-faint border-t md:border-t-0 md:border-l border-line pt-2 md:pt-0 md:pl-4">
-        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+        <span className="inline-block w-2 h-2 rounded-full bg-accent" />
         <span>数据状态: <strong className="text-fg font-semibold">已更新</strong></span>
       </div>
     </div>

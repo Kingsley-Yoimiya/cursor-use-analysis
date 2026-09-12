@@ -219,9 +219,10 @@ export function UsageDistributionCompare({
   }
 
   const colorOf = (key: (typeof WINDOWS)[number]['colorKey']) => colors[key]
+  const paper = colors.paper
 
   return (
-    <div className="space-y-4">
+    <div className={paper ? 'space-y-3' : 'space-y-4'}>
       <div className="grid gap-3 sm:grid-cols-3">
         {WINDOWS.map((w) => {
           const s = stats[w.id]
@@ -273,7 +274,7 @@ export function UsageDistributionCompare({
           </p>
         ) : (
           <>
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={paper ? 220 : 260}>
               <AreaChart data={densData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid {...chartGridProps(colors.grid)} />
                 <XAxis
@@ -319,7 +320,7 @@ export function UsageDistributionCompare({
                   dataKey="d7"
                   stroke={colorOf('chart1')}
                   fill={colorOf('chart1')}
-                  fillOpacity={0.12}
+                  fillOpacity={colors.paper ? 0 : 0.12}
                   strokeWidth={1.5}
                   isAnimationActive={false}
                 />
@@ -328,7 +329,7 @@ export function UsageDistributionCompare({
                   dataKey="d30"
                   stroke={colorOf('chart2')}
                   fill={colorOf('chart2')}
-                  fillOpacity={0.08}
+                  fillOpacity={colors.paper ? 0 : 0.08}
                   strokeWidth={1.5}
                   isAnimationActive={false}
                 />
@@ -337,20 +338,22 @@ export function UsageDistributionCompare({
                   dataKey="d90"
                   stroke={colorOf('chart4')}
                   fill={colorOf('chart4')}
-                  fillOpacity={0.06}
+                  fillOpacity={colors.paper ? 0 : 0.06}
                   strokeWidth={1.5}
                   isAnimationActive={false}
                 />
               </AreaChart>
             </ResponsiveContainer>
-            <p className="mt-2 text-[11px] text-fg-faint">
-              曲线为完整本地日的日 token 总量核密度（峰值归一化便于比形状）。越靠右说明「大用量日」更多；今天单独标在卡片上，不计入分布。
-            </p>
+            {!paper && (
+              <p className="mt-2 text-[11px] text-fg-faint">
+                曲线为完整本地日的日 token 总量核密度（峰值归一化便于比形状）。越靠右说明「大用量日」更多；今天单独标在卡片上，不计入分布。
+              </p>
+            )}
           </>
         )}
       </ChartPanel>
 
-      {hourProfile && (
+      {hourProfile && !paper && (
         <ChartPanel
           title="平均日内时段画像（次要）"
           actions={

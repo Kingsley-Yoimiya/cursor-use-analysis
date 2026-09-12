@@ -17,9 +17,11 @@ import {
   ChartPanel,
   ChartTooltipShell,
   OVERVIEW_SYNC_ID,
+  paperHatchDefs,
   chartCursorFill,
   chartGridProps,
   chartTickStyle,
+  paperBarProps,
 } from '../lib/chartChrome'
 
 interface PoolValues {
@@ -144,6 +146,8 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
     [chartColors],
   )
   const tick = chartTickStyle(chartColors.tick)
+  const paper = chartColors.paper
+  const poolColorList = POOLS.map((pool) => poolColors[pool])
 
   if (!daily) {
     return <div className="h-72 animate-pulse panel bg-surface-2" />
@@ -171,7 +175,8 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
 
   return (
     <ChartPanel
-      title="每日消耗细分（Auto / First-party / API）"
+      title="费用落在哪个池"
+      band="warm"
       actions={<ModeToggle mode={mode} setMode={setMode} />}
     >
       <ChartLegendRow
@@ -187,6 +192,7 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
           margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
           barCategoryGap="28%"
         >
+          {paperHatchDefs('poolbars', poolColorList, paper, chartColors.surface)}
           <CartesianGrid {...chartGridProps(chartColors.grid)} />
           <XAxis
             dataKey="date"
@@ -210,14 +216,14 @@ export function ModelUsageChart({ daily }: ModelUsageChartProps) {
             cursor={chartCursorFill(chartColors.cursor)}
             isAnimationActive={false}
           />
-          {POOLS.map((pool) => (
+          {POOLS.map((pool, i) => (
             <Bar
               key={pool}
               dataKey={pool}
               name={POOL_LABELS[pool]}
               stackId="a"
-              fill={poolColors[pool]}
               isAnimationActive={false}
+              {...paperBarProps('poolbars', poolColors[pool], i, paper)}
             />
           ))}
         </BarChart>

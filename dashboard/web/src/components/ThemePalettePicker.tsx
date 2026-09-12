@@ -28,6 +28,10 @@ const PREVIEW: Record<
     light: ['#f4f7ef', '#eef3e6', '#5a8f3c'],
     dark: ['#1a2118', '#2a3526', '#a8d080'],
   },
+  paper: {
+    light: ['#ffffff', '#f3f1ec', '#3d5a80'],
+    dark: ['#ffffff', '#f3f1ec', '#3d5a80'],
+  },
 }
 
 export function ThemePalettePicker() {
@@ -97,7 +101,7 @@ export function ThemePalettePicker() {
       {open && (
         <ul
           role="listbox"
-          className="absolute right-0 mt-1.5 w-52 border border-line bg-elevated p-1 z-50"
+          className="absolute right-0 mt-1.5 w-56 border border-line bg-elevated p-1 z-50"
           style={{ borderRadius: 'var(--radius-md)' }}
         >
           {PALETTE_OPTIONS.map((opt) => {

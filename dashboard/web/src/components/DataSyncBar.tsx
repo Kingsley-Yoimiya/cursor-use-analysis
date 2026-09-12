@@ -118,9 +118,11 @@ function deltaToPulse(delta: SyncDelta | undefined, syncMs?: number): SyncPulse 
 export function DataSyncBar({
   onReload,
   onSyncSuccess,
+  primaryOnly = false,
 }: {
   onReload: () => void
   onSyncSuccess?: (pulse: SyncPulse) => void
+  primaryOnly?: boolean
 }) {
   const [status, setStatus] = useState<DataStatus | null>(null)
   const [caps, setCaps] = useState<ServerCaps | null>(null)
@@ -233,24 +235,28 @@ export function DataSyncBar({
     (caps.dataStatus && (!auth?.exists || session?.expired === true))
 
   return (
-    <div className="flex flex-col items-end gap-1 max-w-[min(100%,22rem)]">
+    <div className={`flex flex-col ${primaryOnly ? 'items-stretch' : 'items-end'} gap-1 ${primaryOnly ? '' : 'max-w-[min(100%,22rem)]'}`}>
       <div className="flex items-center gap-2">
-        <span
-          className="hidden lg:inline text-[11px] text-fg-faint max-w-[180px] truncate"
-          title={statusLine}
-        >
-          {statusLine}
-        </span>
+        {!primaryOnly && (
+          <span
+            className="hidden lg:inline text-[11px] text-fg-faint max-w-[180px] truncate"
+            title={statusLine}
+          >
+            {statusLine}
+          </span>
+        )}
 
-        <button
-          type="button"
-          onClick={handleReload}
-          disabled={busy || !caps}
-          className="btn-ghost"
-          title="重新读取本地 CSV 并刷新图表（不访问 Cursor）"
-        >
-          {reloading ? '…' : '重新加载'}
-        </button>
+        {!primaryOnly && (
+          <button
+            type="button"
+            onClick={handleReload}
+            disabled={busy || !caps}
+            className="btn-ghost"
+            title="重新读取本地 CSV 并刷新图表（不访问 Cursor）"
+          >
+            {reloading ? '…' : '重新加载'}
+          </button>
+        )}
 
         <button
           type="button"
@@ -267,7 +273,7 @@ export function DataSyncBar({
                   : '从 Cursor 拉取 CSV 并重算（需代理）'
           }
         >
-          {syncing ? '同步中…' : '从 Cursor 同步'}
+          {syncing ? '同步中…' : primaryOnly ? '同步' : '从 Cursor 同步'}
         </button>
       </div>
       {inlineErr && (

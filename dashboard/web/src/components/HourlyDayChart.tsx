@@ -43,6 +43,7 @@ function MiniHourChart({
   grid,
   formatValue,
   unitLabel,
+  fillOpacity = 0.16,
 }: {
   title: string
   data: { hour: string; tokens: number; cost: number }[]
@@ -52,6 +53,7 @@ function MiniHourChart({
   grid: string
   formatValue: (n: number) => string
   unitLabel: string
+  fillOpacity?: number
 }) {
   return (
     <div className="min-h-0 flex-1 flex flex-col overflow-hidden">
@@ -103,7 +105,7 @@ function MiniHourChart({
               dataKey={dataKey}
               stroke={color}
               fill={color}
-              fillOpacity={0.16}
+              fillOpacity={fillOpacity}
               strokeWidth={1.5}
               isAnimationActive={false}
             />
@@ -167,6 +169,7 @@ export function HourlyDayChart({
         grid={colors.grid}
         formatValue={fmtTokens}
         unitLabel="Token"
+        fillOpacity={colors.paper ? 0 : 0.16}
       />
       <MiniHourChart
         title="金额（估算 USD）"
@@ -177,6 +180,7 @@ export function HourlyDayChart({
         grid={colors.grid}
         formatValue={fmtUsdShort}
         unitLabel="USD"
+        fillOpacity={colors.paper ? 0 : 0.16}
       />
     </ChartPanel>
   )
